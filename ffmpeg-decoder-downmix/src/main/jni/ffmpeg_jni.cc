@@ -469,6 +469,9 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
       return NULL;
     }
     env->GetByteArrayRegion(extraData, 0, size, (jbyte*)codecContext->extradata);
+    // FFmpeg bitstream readers may access the required padding after extradata.
+    // The padding must be zero-filled, not left with uninitialized heap bytes.
+    memset(codecContext->extradata + size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
   }
   if (codecContext->codec_id == AV_CODEC_ID_PCM_MULAW ||
       codecContext->codec_id == AV_CODEC_ID_PCM_ALAW) {
