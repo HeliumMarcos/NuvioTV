@@ -357,6 +357,11 @@ AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
     return AUDIO_DECODER_ERROR_OTHER;
   }
   DecoderContext* decoderContext = (DecoderContext*)context;
+  if (decoderContext->decoder_drain_started ||
+      decoderContext->encoder_flush_started) {
+    LOGE("Cannot decode new input after decoder/encoder EOS without reset.");
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
   decoderContext->last_output_pts = AV_NOPTS_VALUE;
   decoderContext->last_output_packet_count = 0;
   AVPacket* packet = av_packet_alloc();
