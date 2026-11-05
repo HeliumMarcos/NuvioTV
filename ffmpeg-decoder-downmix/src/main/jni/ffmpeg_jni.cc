@@ -387,6 +387,37 @@ uint8_t* GrowOutputBufferCallback::operator()(int requiredSize) const {
 
 // Returns the first compressed packet timestamp relative to this encoder
 // session, in microseconds. Java adds the media timeline anchor.
+// Dequeue an already-encoded access unit without consuming another input
+// packet. The Java output scheduler must call this before signaling EOS.
+AUDIO_DECODER_FUNC(jint, ffmpegDequeueEncodedPacket, jlong context,
+                   jobject decoderOutputBuffer, jobject outputData,
+                   jint outputSize) {
+  if (!context || !decoderOutputBuffer || !outputData || outputSize < 0) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  DecoderContext* decoderContext = (DecoderContext*)context;
+  if (decoderContext->transcoding_mode == 0) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  uint8_t* outputBuffer = (uint8_t*)env->GetDirectBufferAddress(outputData);
+  if (!outputBuffer ||
+      outputSize > env->GetDirectBufferCapacity(outputData)) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  decoderContext->last_output_pts = AV_NOPTS_VALUE;
+  decoderContext->last_output_packet_count = 0;
+  return dequeueEncodedPacket(
+      decoderContext, outputBuffer, outputSize,
+      GrowOutputBufferCallback{env, thiz, decoderOutputBuffer});
+}
+
+AUDIO_DECODER_FUNC(jint, ffmpegGetPendingEncodedPacketCount, jlong context) {
+  if (!context) {
+    return 0;
+  }
+  return ((DecoderContext*)context)->pending_packet_count;
+}
+
 AUDIO_DECODER_FUNC(jint, ffmpegGetOutputPacketCount, jlong context) {
   if (!context) {
     return 0;
