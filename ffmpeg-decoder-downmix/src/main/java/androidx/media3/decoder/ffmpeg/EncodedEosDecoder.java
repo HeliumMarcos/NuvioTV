@@ -28,6 +28,8 @@ final class EncodedEosDecoder
   private final FfmpegAudioDecoder delegate;
   private boolean eosRequested;
   private boolean drainStepQueued;
+  private boolean pendingStepQueued;
+  private boolean inputOutstanding;
   private boolean eosQueued;
   private boolean released;
 
@@ -55,15 +57,18 @@ final class EncodedEosDecoder
   @Override
   @Nullable
   public DecoderInputBuffer dequeueInputBuffer() throws FfmpegDecoderException {
-    if (eosRequested) {
-      // Once source EOS is received, only the wrapper may queue drain inputs.
+    if (eosRequested || pendingStepQueued) {
+      // Hold upstream input while an internal packet-only drain runs.
       return null;
     }
-    return delegate.dequeueInputBuffer();
+    @Nullable DecoderInputBuffer input = delegate.dequeueInputBuffer();
+    inputOutstanding = input != null;
+    return input;
   }
 
   @Override
   public void queueInputBuffer(DecoderInputBuffer inputBuffer) throws FfmpegDecoderException {
+    inputOutstanding = false;
     if (!inputBuffer.isEndOfStream()) {
       delegate.queueInputBuffer(inputBuffer);
       return;
@@ -82,6 +87,8 @@ final class EncodedEosDecoder
   public SimpleDecoderOutputBuffer dequeueOutputBuffer() throws FfmpegDecoderException {
     if (eosRequested && !eosQueued) {
       advanceDrain();
+    } else if (!eosRequested) {
+      advancePendingPackets();
     }
     @Nullable SimpleDecoderOutputBuffer output = delegate.dequeueOutputBuffer();
     if (eosRequested && output != null && !output.isEndOfStream()) {
@@ -91,6 +98,27 @@ final class EncodedEosDecoder
       output.skippedOutputBufferCount = 0;
     }
     return output;
+  }
+
+  private void advancePendingPackets() throws FfmpegDecoderException {
+    if (pendingStepQueued) {
+      if (!delegate.hasFinishedSyntheticDrainStep()) {
+        return;
+      }
+      pendingStepQueued = false;
+    }
+    if (inputOutstanding || delegate.getPendingEncodedPacketsSnapshot() <= 0) {
+      return;
+    }
+    @Nullable DecoderInputBuffer input = delegate.dequeueInputBuffer();
+    if (input == null) {
+      return;
+    }
+    input.clear();
+    input.timeUs = FfmpegAudioDecoder.ENCODED_PENDING_INPUT_TIME_US;
+    delegate.prepareSyntheticDrainStep();
+    delegate.queueInputBuffer(input);
+    pendingStepQueued = true;
   }
 
   private void advanceDrain() throws FfmpegDecoderException {
@@ -126,6 +154,8 @@ final class EncodedEosDecoder
   public void flush() {
     eosRequested = false;
     drainStepQueued = false;
+    pendingStepQueued = false;
+    inputOutstanding = false;
     eosQueued = false;
     delegate.flush();
   }
