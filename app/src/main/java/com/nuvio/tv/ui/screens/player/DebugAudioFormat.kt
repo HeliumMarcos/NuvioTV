@@ -73,7 +73,7 @@ internal class DebugAudioTrackBinding(
     private val config: AudioSink.AudioTrackConfig
 ) {
     fun snapshot(): DebugAudioOutput? = runCatching {
-        if (track.state != android.media.AudioTrack.STATE_INITIALIZED) return null
+        if (track.state != android.media.AudioTrack.STATE_INITIALIZED) return@runCatching null
         val device = track.routedDevice
         val route = device?.let {
             val type = when (it.type) {
