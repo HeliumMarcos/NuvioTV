@@ -679,7 +679,16 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
           }
 
           if (decoderContext->last_output_pts == AV_NOPTS_VALUE) {
-            decoderContext->last_output_pts = decoderContext->encoder_packet->pts;
+            // A packet can carry an unknown PTS even when input frames were
+            // timestamped. Prefer DTS only when it is explicitly available;
+            // otherwise let Java keep the original input timestamp.
+            const int64_t packetPts = decoderContext->encoder_packet->pts;
+            const int64_t packetDts = decoderContext->encoder_packet->dts;
+            if (packetPts != AV_NOPTS_VALUE) {
+              decoderContext->last_output_pts = packetPts;
+            } else if (packetDts != AV_NOPTS_VALUE) {
+              decoderContext->last_output_pts = packetDts;
+            }
           }
           int packetSize = decoderContext->encoder_packet->size;
           // Guard the signed JNI buffer size before computing the required
