@@ -7,7 +7,6 @@ package androidx.media3.decoder.ffmpeg;
 
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
-import androidx.media3.decoder.Decoder;
 import androidx.media3.decoder.DecoderInputBuffer;
 import androidx.media3.decoder.SimpleDecoderOutputBuffer;
 import java.util.concurrent.Executor;
@@ -173,8 +172,9 @@ final class EncodedEosDecoder
     }
   }
 
-  @Override
-  public void setCallback(Callback callback, Executor executor) {
+  // Media3 1.8.0 Decoder has no setCallback method; renderer configures the
+  // underlying SimpleDecoder callback through this package-private bridge.
+  public void setCallback(FfmpegAudioDecoder.Callback callback, Executor executor) {
     delegate.setDrainWakeupCallback(callback, executor);
     delegate.setCallback(callback, executor);
   }
