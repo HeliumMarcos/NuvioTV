@@ -116,7 +116,8 @@ struct DecoderContext {
   AudioLimiter limiter;
 
   // AC3 Encoder fields
-  bool transcode_to_ac3;
+  // 0 = PCM, 1 = AC-3, 2 = E-AC-3.
+  int transcoding_mode;
   AVCodecContext* encoder_context;
   AVAudioFifo* fifo;
   AVFrame* encoder_frame;
@@ -140,7 +141,7 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
                               jint outputChannelCount,
                               jstring requestedOutputLayoutName,
                               jboolean outputFloat,
-                              jboolean transcodeToAc3);
+                              jint transcodingMode);
 
 struct GrowOutputBufferCallback {
   uint8_t* operator()(int requiredSize) const;
@@ -256,7 +257,7 @@ AUDIO_DECODER_FUNC(jlong, ffmpegInitialize, jstring codecName,
                    jint outputChannelCount,
                    jstring requestedOutputLayoutName,
                    jboolean outputFloat,
-                   jboolean transcodeToAc3) {
+                   jint transcodingMode) {
   const AVCodec* codec = getCodecByName(env, codecName);
   if (!codec) {
     LOGE("Codec not found.");
@@ -265,7 +266,7 @@ AUDIO_DECODER_FUNC(jlong, ffmpegInitialize, jstring codecName,
   return (jlong)createContext(env, codec, extraData, rawSampleRate,
                               rawChannelCount, outputChannelCount,
                               requestedOutputLayoutName, outputFloat,
-                              transcodeToAc3);
+                              transcodingMode);
 }
 
 AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
@@ -341,7 +342,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegGetSampleRate, jlong context) {
     return -1;
   }
   DecoderContext* decoderContext = (DecoderContext*)context;
-  if (decoderContext->transcode_to_ac3 && decoderContext->encoder_context) {
+  if (decoderContext->transcoding_mode != 0 && decoderContext->encoder_context) {
     return decoderContext->encoder_context->sample_rate;
   }
   return decoderContext->codec_context->sample_rate;
@@ -360,7 +361,7 @@ AUDIO_DECODER_FUNC(jlong, ffmpegReset, jlong jContext, jbyteArray extraData) {
     jint outputChannelCount = decoderContext->requested_output_channel_count;
     jboolean outputFloat =
         decoderContext->output_sample_format == OUTPUT_FORMAT_PCM_FLOAT;
-    jboolean transcodeToAc3 = decoderContext->transcode_to_ac3;
+    jint transcodingMode = decoderContext->transcoding_mode != 0;
     jstring requestedOutputLayoutName = NULL;
     if (decoderContext->requested_output_layout_name) {
       requestedOutputLayoutName =
@@ -378,7 +379,7 @@ AUDIO_DECODER_FUNC(jlong, ffmpegReset, jlong jContext, jbyteArray extraData) {
                                          outputChannelCount,
                                          requestedOutputLayoutName,
                                          outputFloat,
-                                         transcodeToAc3);
+                                         transcodingMode);
     if (requestedOutputLayoutName) {
       env->DeleteLocalRef(requestedOutputLayoutName);
     }
@@ -413,14 +414,14 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
                               jint outputChannelCount,
                               jstring requestedOutputLayoutName,
                               jboolean outputFloat,
-                              jboolean transcodeToAc3) {
+                              jint transcodingMode) {
   DecoderContext* decoderContext =
       static_cast<DecoderContext*>(calloc(1, sizeof(DecoderContext)));
   if (!decoderContext) {
     LOGE("Failed to allocate decoder context.");
     return NULL;
   }
-  decoderContext->transcode_to_ac3 = transcodeToAc3;
+  decoderContext->transcoding_mode = transcodingMode;
   resetLimiter(&decoderContext->limiter);
 
   AVCodecContext* codecContext = avcodec_alloc_context3(codec);
@@ -509,7 +510,7 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
 
     int sampleRate =
         frame->sample_rate > 0 ? frame->sample_rate : codecContext->sample_rate;
-    if (decoderContext->transcode_to_ac3) {
+    if (decoderContext->transcoding_mode != 0) {
       int outSamples = swr_get_out_samples(decoderContext->resample_context, frame->nb_samples);
       int nb_channels = decoderContext->output_layout.nb_channels;
       if (outSamples <= 0 || nb_channels <= 0) {
@@ -678,7 +679,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   }
 
   AVChannelLayout outputLayout = {};
-  if (decoderContext->transcode_to_ac3) {
+  if (decoderContext->transcoding_mode != 0) {
     av_channel_layout_default(&outputLayout, 6);
     decoderContext->output_sample_format = AV_SAMPLE_FMT_FLTP;
   } else {
@@ -699,7 +700,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   }
   // AC-3 over optical/HDMI uses a stable 48 kHz output, including when
   // decoding high-sample-rate TrueHD. PCM-only output retains the input rate.
-  const int outputSampleRate = decoderContext->transcode_to_ac3 ? 48000 : inputSampleRate;
+  const int outputSampleRate = decoderContext->transcoding_mode != 0 ? 48000 : inputSampleRate;
   AVSampleFormat inputSampleFormat = (AVSampleFormat)frame->format;
   bool isDownmixActive = outputLayout.nb_channels < inputLayout.nb_channels;
   bool applyNormalization = isDownmixActive && downmixNormalizationEnabled;
@@ -784,10 +785,12 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   decoderContext->downmix_active = isDownmixActive;
   decoderContext->limiter.sample_rate = static_cast<float>(outputSampleRate);
 
-  if (decoderContext->transcode_to_ac3 && !decoderContext->encoder_initialized) {
-    const AVCodec* encoder = avcodec_find_encoder(AV_CODEC_ID_AC3);
+  if (decoderContext->transcoding_mode != 0 && !decoderContext->encoder_initialized) {
+    const AVCodecID encoderId = decoderContext->transcoding_mode == 2
+        ? AV_CODEC_ID_EAC3 : AV_CODEC_ID_AC3;
+    const AVCodec* encoder = avcodec_find_encoder(encoderId);
     if (!encoder) {
-      LOGE("AC3 encoder not found. Check FFmpeg build options.");
+      LOGE("Requested AC3/EAC3 encoder not found. Check FFmpeg build options.");
       av_channel_layout_uninit(&inputLayout);
       av_channel_layout_uninit(&outputLayout);
       return AUDIO_DECODER_ERROR_OTHER;
