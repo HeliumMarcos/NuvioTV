@@ -559,6 +559,16 @@ import java.util.concurrent.Executor;
     data = checkNotNull(outputBuffer.data);
     data.position(0);
     data.limit(size);
+    // A short stream can produce its first encoded packet only during
+    // EOS draining, bypassing the normal decode() output-format update.
+    if (!hasOutputFormat) {
+      channelCount = ffmpegGetChannelCount(nativeContext);
+      sampleRate = ffmpegGetSampleRate(nativeContext);
+      if (channelCount <= 0 || sampleRate <= 0) {
+        throw new FfmpegDecoderException("Invalid compressed output format after drain.");
+      }
+      hasOutputFormat = true;
+    }
     long packetTimeUs = ffmpegGetOutputTimeUs(nativeContext);
     if (packetTimeUs != Long.MIN_VALUE && encodedTimeAnchorUs != C.TIME_UNSET
         && ((packetTimeUs > 0 && encodedTimeAnchorUs <= Long.MAX_VALUE - packetTimeUs)
