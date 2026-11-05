@@ -130,3 +130,7 @@ The upstream AndroidX Media3 `SimpleDecoder.decode()` implementation handles EOS
 6. On seek, flush, format change, release or decoder reinitialization, discard pending packets and reset all native drain flags and timestamps. Ensure the audio renderer cannot observe stale outputs from the previous generation.
 
 The new JNI/Java `isResamplerDrainComplete()` query is available to distinguish completion from a zero-packet result. This plan is not yet implemented. No build or device validation has been performed. Sources inspected: `androidx/media` upstream `libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java` and `libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio/DecoderAudioRenderer.java`.
+
+### Native memory and JNI growth checks
+
+The experimental `ffmpegDrainResampler()` now limits each planar-float allocation to 8,192 output samples, iterating for larger delayed buffers, and validates aggregate channel/sample dimensions against integer overflow. `GrowOutputBufferCallback` checks that Java returns a direct buffer of sufficient capacity and releases the JNI local reference created by `CallObjectMethod`. These are static code hardening changes; native compilation and runtime behavior remain unverified. **The Media3 EOS scheduler is still missing**; no claim of gapless or complete end-of-stream output is made.
