@@ -46,6 +46,18 @@ jobs:
           ./gradlew :ffmpeg-decoder-downmix:assembleDebug \
             -Pandroid.injected.build.abi=arm64-v8a \
             --stacktrace --no-daemon
+      - name: Assemble experimental NuvioTV debug APK
+        run: |
+          ./gradlew :app:assembleDebug \
+            -PuseLocalFfmpegDecoder=true \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            --stacktrace --no-daemon
+      - name: Upload experimental debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuviotv-eac3-experimental-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
       - name: Upload compiled decoder AAR
         uses: actions/upload-artifact@v4
         with:
