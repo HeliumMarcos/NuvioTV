@@ -912,8 +912,13 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                  GrowOutputBufferCallback growBuffer) {
   AVCodecContext* codecContext = decoderContext->codec_context;
   int result = avcodec_send_packet(codecContext, packet);
-  if (result == AVERROR_EOF && packet == nullptr) {
-    // The decoder has already accepted EOS; its output was drained.
+  if (packet == nullptr && result == AVERROR(EAGAIN)) {
+    // FFmpeg requires the caller to receive delayed frames before retrying
+    // the null packet. Continue draining without treating backpressure as
+    // a fatal decoder error; the next drain call will retry EOS.
+    result = 0;
+  } else if (packet == nullptr && result == AVERROR_EOF) {
+    // EOS was already accepted on an earlier call.
     result = 0;
   }
   if (result) {
