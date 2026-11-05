@@ -23,6 +23,7 @@
  */
 #include <android/log.h>
 #include <jni.h>
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
