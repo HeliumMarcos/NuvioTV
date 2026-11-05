@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <application android:label="NuvioTV E-AC-3" tools:replace="android:label">
+        <activity android:name=".launcher.AppIconDefault" android:label="NuvioTV E-AC-3" tools:replace="android:label" />
+        <activity android:name=".launcher.AppIconArcticBlue" android:label="NuvioTV E-AC-3" tools:replace="android:label" />
+        <activity android:name=".launcher.AppIconEmerald" android:label="NuvioTV E-AC-3" tools:replace="android:label" />
+        <activity android:name=".launcher.AppIconRoseGold" android:label="NuvioTV E-AC-3" tools:replace="android:label" />
+        <activity android:name=".launcher.AppIconCopper" android:label="NuvioTV E-AC-3" tools:replace="android:label" />
+        <activity android:name=".launcher.AppIconGraphite" android:label="NuvioTV E-AC-3" tools:replace="android:label" />
     </application>
 </manifest>
