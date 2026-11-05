@@ -131,6 +131,9 @@ import java.util.List;
       if (nativeContext == 0) {
         return new FfmpegDecoderException("Error resetting (see logcat).");
       }
+      // The native encoder/resampler may have been recreated after seeking.
+      // Query the resulting output format again on the next non-empty buffer.
+      hasOutputFormat = false;
     }
     ByteBuffer inputData = Util.castNonNull(inputBuffer.data);
     int inputSize = inputData.limit();
