@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 jobs:
-  compile-eac3-arm64:
+  compile-eac3-armv7:
     runs-on: ubuntu-latest
     timeout-minutes: 110
     env:
-      FFMPEG_TARGET_ABI: arm64-v8a
+      FFMPEG_TARGET_ABI: armeabi-v7a
       FFMPEG_BUILD_JOBS: '4'
       USE_LOCAL_FFMPEG_DECODER: 'true'
       CI_USE_DEBUG_SIGNING: 'true'
@@ -44,27 +44,27 @@ jobs:
       - name: Install Android build dependencies
         run: |
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
-          test -x "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          test -x "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang"
       - name: Fetch pinned FFmpeg source
         run: |
           git clone --depth 1 --branch n7.1.2 https://github.com/FFmpeg/FFmpeg.git "$FFMPEG_SOURCE_DIR"
-      - name: Compile FFmpeg decoders and AC-3 / E-AC-3 encoders for arm64
+      - name: Compile FFmpeg decoders and AC-3 / E-AC-3 encoders for armeabi-v7a
         run: |
           bash ffmpeg-decoder-downmix/src/main/jni/build_ffmpeg.sh \
             "$PWD/ffmpeg-decoder-downmix/src/main" \
             "$ANDROID_HOME/ndk/29.0.14206865" \
             linux-x86_64 24 \
             truehd ac3 eac3 dca aac flac alac vorbis opus mp3
-      - name: Compile native JNI and Java decoder (arm64)
+      - name: Compile native JNI and Java decoder (armeabi-v7a)
         run: |
           ./gradlew :ffmpeg-decoder-downmix:assembleDebug \
-            -Pandroid.injected.build.abi=arm64-v8a \
+            -Pandroid.injected.build.abi=armeabi-v7a \
             --stacktrace --no-daemon
       - name: Assemble experimental NuvioTV debug APK
         run: |
           ./gradlew :app:assembleDebug \
             -PuseLocalFfmpegDecoder=true \
-            -Pandroid.injected.build.abi=arm64-v8a \
+            -Pandroid.injected.build.abi=armeabi-v7a \
             --stacktrace --no-daemon
       - name: Collect and verify experimental full debug APK
         run: |
@@ -79,18 +79,21 @@ jobs:
             exit 1
           fi
           for apk in "${apks[@]}"; do
-            cp "$apk" "$RUNNER_TEMP/eac3-apk/"
+            case "$(basename "$apk")" in
+              *armeabi-v7a*) cp "$apk" "$RUNNER_TEMP/eac3-apk/" ;;
+            esac
           done
+          test -n "$(find "$RUNNER_TEMP/eac3-apk" -type f -name "*.apk" -print -quit)"
           ls -lh "$RUNNER_TEMP/eac3-apk"
       - name: Upload experimental debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: nuviotv-eac3-experimental-debug-apk
+          name: nuviotv-eac3-experimental-armeabi-v7a-debug-apk
           path: ${{ runner.temp }}/eac3-apk/*.apk
           if-no-files-found: error
       - name: Upload compiled decoder AAR
         uses: actions/upload-artifact@v4
         with:
-          name: experimental-eac3-decoder-arm64
+          name: experimental-eac3-decoder-armeabi-v7a
           path: ffmpeg-decoder-downmix/build/outputs/aar/ffmpeg-decoder-downmix-debug.aar
           if-no-files-found: error
