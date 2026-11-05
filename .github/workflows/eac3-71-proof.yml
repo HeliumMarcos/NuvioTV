@@ -21,7 +21,9 @@ jobs:
           git -C "$RUNNER_TEMP/ffmpeg-proof" apply --check "$GITHUB_WORKSPACE/experiments/eac3-7.1/upstream-21668.patch"
           git -C "$RUNNER_TEMP/ffmpeg-proof" apply "$GITHUB_WORKSPACE/experiments/eac3-7.1/upstream-21668.patch"
       - name: Apply experimental base-channel mapping correction
-        run: python3 experiments/eac3-7.1/fix_base_mapping.py "$RUNNER_TEMP/ffmpeg-proof"
+        run: |
+          python3 experiments/eac3-7.1/fix_base_mapping.py "$RUNNER_TEMP/ffmpeg-proof"
+          python3 experiments/eac3-7.1/fix_surround_substream.py "$RUNNER_TEMP/ffmpeg-proof"
       - name: Build isolated encoder and decoder
         run: |
           cd "$RUNNER_TEMP/ffmpeg-proof"

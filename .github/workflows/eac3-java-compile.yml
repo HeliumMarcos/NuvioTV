@@ -63,6 +63,7 @@ jobs:
           git -C "$FFMPEG_SOURCE_DIR" checkout c352a9ab022b945307f1ad5d35575f695a13c2ca
           git -C "$FFMPEG_SOURCE_DIR" apply "$GITHUB_WORKSPACE/experiments/eac3-7.1/upstream-21668.patch"
           python3 experiments/eac3-7.1/fix_base_mapping.py "$FFMPEG_SOURCE_DIR"
+          python3 experiments/eac3-7.1/fix_surround_substream.py "$FFMPEG_SOURCE_DIR"
           python3 experiments/eac3-7.1/fix_decoder_mapping.py "$FFMPEG_SOURCE_DIR"
       - name: Compile FFmpeg decoders and AC-3 / E-AC-3 encoders for armeabi-v7a
         run: |
