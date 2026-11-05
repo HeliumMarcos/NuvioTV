@@ -184,3 +184,9 @@ The native `ffmpegDrainResampler` path now peeks at a complete encoder FIFO fram
 `EncodedEosDecoder.flush()` invalidates both the pending encoded packet snapshot and the Java terminal-EOS completion flag before delegating to `SimpleDecoder.flush()`. This prevents an old terminal completion state from being reused when the next playback position is decoded. When the first compressed access unit arrives only during terminal drain (for example, an extremely short TrueHD stream), `dequeuePendingEncodedPacket()` now populates and validates the encoded output channel count and sample rate rather than relying on the normal decode path to have produced a packet already.
 
 **Still unverified:** Android Java/C++ compilation, actual Media3 1.8.0 API compatibility, native E-AC-3 encoder support, terminal drain under backpressure, seek races and output timing. The experimental feature must remain disabled by default.
+
+### Terminal queue saturation and post-EOS input protection
+
+The terminal encoder flush now stops calling `avcodec_receive_packet` once the native pending packet queue reaches 248 entries, rather than receiving another packet and potentially failing when the hard limit of 256 is reached. The next scheduler iteration can dequeue pending packets and resume the encoder flush. The Media3 wrapper also rejects non-EOS media input after the EOS request has been accepted, preventing an invalid source-to-drain transition.
+
+**Stress tests:** force a large packet backlog while ending the stream; verify every encoded access unit is emitted exactly once, encoder EOF is eventually observed, and Media3 does not stall. Also verify rapid seek and decoder reinitialization, plus that ordinary PCM decoding is unchanged. These changes have not been compiled or run on an Android device.
