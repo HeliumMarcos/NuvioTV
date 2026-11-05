@@ -38,3 +38,27 @@ This branch is experimental. Do not merge into `dev` or distribute an APK as pro
 - There is no tested runtime fallback if E-AC-3 encoding itself fails.
 - 7.1 E-AC-3 and Dolby Digital Plus Atmos/JOC are not implemented.
 - No APK build, automated test result, or device playback validation has been produced yet.
+
+## Local decoder selection (critical)
+
+The app defaults to the prebuilt decoder AAR. **Changing JNI or the FFmpeg build script does not change the APK** unless the local module and newly compiled FFmpeg binaries are used.
+
+Set these in a developer-local `local.properties` (do not commit machine-specific paths):
+
+```properties
+USE_LOCAL_FFMPEG_DECODER=true
+FFMPEG_SOURCE_DIR=/absolute/path/to/ffmpeg
+FFMPEG_BUILD_DIR=/absolute/path/to/compiled/ffmpeg
+```
+
+The local module currently specifies NDK `29.0.14206865` and CMake `3.22.1`. Build the required Android ABIs with both encoders enabled and ensure `FFMPEG_BUILD_DIR` contains the native outputs expected by `src/main/jni/CMakeLists.txt`. Run `./gradlew :app:assembleFullDebug` only after those prerequisites are ready.
+
+**Do not claim E-AC-3 support from an APK built with `USE_LOCAL_FFMPEG_DECODER=false`.** The existing `app/libs/lib-decoder-ffmpeg-release.aar` may not contain these experimental changes.
+
+### Pre-release blockers
+
+- Verify the actual JNI method signature and native linkage with the selected AAR/module.
+- Verify encoded packet framing and AudioSink behavior on the device.
+- Test output timestamps, end-of-stream draining, seek/reset and encoder reconfiguration.
+- Confirm 48 kHz resampling with real 96/192 kHz TrueHD samples.
+- Wire the opt-in renderer setter into playback settings only after build and playback verification.
