@@ -190,7 +190,13 @@ import java.util.List;
     if (outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3) {
       long packetTimeUs = ffmpegGetOutputTimeUs(nativeContext);
       if (packetTimeUs != Long.MIN_VALUE && encodedTimeAnchorUs != C.TIME_UNSET) {
-        outputBuffer.timeUs = encodedTimeAnchorUs + packetTimeUs;
+        // Guard the media-time conversion against signed overflow. A corrupt
+        // native timestamp must not wrap into an unrelated playback position.
+        if ((packetTimeUs > 0 && encodedTimeAnchorUs <= Long.MAX_VALUE - packetTimeUs)
+            || (packetTimeUs < 0 && encodedTimeAnchorUs >= Long.MIN_VALUE - packetTimeUs)
+            || packetTimeUs == 0) {
+          outputBuffer.timeUs = encodedTimeAnchorUs + packetTimeUs;
+        }
       }
     }
     return null;
