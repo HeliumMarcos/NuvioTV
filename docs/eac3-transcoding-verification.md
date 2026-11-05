@@ -107,3 +107,7 @@ The experimental encoder-finalization entry point now rejects repeated EOF submi
 ### Delayed decoder-frame drain primitive
 
 Native `ffmpegDrainDecoder()` now passes a null input packet to `decodePacket()` and accepts FFmpeg decoder EOF as a normal drain result. Its Java bridge `drainDelayedDecoderFrames(SimpleDecoderOutputBuffer)` can return an encoded access unit and its media timestamp. The native decoder rejects new input after draining starts until reset. **Neither bridge is invoked by the existing `SimpleDecoder` EOS path.** A successful decoder drain does not imply the resampler is drained; `swr_convert(..., nullptr, 0)` or equivalent must process buffered samples before calling the terminal encoder flush. An output scheduler must also emit every queued access unit before signaling Media3 EOS. These APIs have not been compiled or tested on Android.
+
+### Confirmed decoder EOF guard
+
+`ffmpegDrainDecoder()` now records `decoder_drain_completed` only after `avcodec_receive_frame()` returns `AVERROR_EOF`; Java can query it with `isDecoderDrainComplete()`. A zero-byte drain response is **not** proof of EOF. Terminal `ffmpegFlushEncodedFrames()` now refuses to run before confirmed decoder EOF. **This guard does not confirm SwrContext is empty:** resampler drain and Media3 output scheduling are still unimplemented. The guard is reset on decoder reset. No native build or device tests have been performed.
