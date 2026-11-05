@@ -483,12 +483,24 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
   }
   for (;;) {
     int capacity = swr_get_out_samples(dc->resample_context, 0);
-    if (capacity < 0 || capacity > INT_MAX / (int)sizeof(float)) {
+    if (capacity < 0) {
+      LOGE("Invalid delayed resampler sample count: %d", capacity);
       return AUDIO_DECODER_ERROR_OTHER;
     }
     if (capacity == 0) {
       dc->resampler_drain_completed = true;
       return dc->pending_packet_count;
+    }
+    // Bound each drain allocation to avoid allocating a potentially huge
+    // planar buffer when FFmpeg reports a large delayed-sample upper bound.
+    // The loop continues to drain any remaining samples on the next pass.
+    const int kMaxDrainSamplesPerCall = 8192;
+    if (capacity > kMaxDrainSamplesPerCall) {
+      capacity = kMaxDrainSamplesPerCall;
+    }
+    if (channels > INT_MAX / (capacity * (int)sizeof(float))) {
+      LOGE("Resampler drain buffer dimensions overflow.");
+      return AUDIO_DECODER_ERROR_OTHER;
     }
     uint8_t** samples = nullptr;
     int linesize = 0;
