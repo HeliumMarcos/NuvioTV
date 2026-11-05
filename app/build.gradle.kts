@@ -214,6 +214,16 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            if (truthy(env("CI_USE_DEBUG_SIGNING"))) {
+                storeFile = file(requireNotNull(env("EAC3_DEBUG_KEYSTORE_PATH")) {
+                    "EAC3_DEBUG_KEYSTORE_PATH is required for stable experimental CI signing"
+                })
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
         create("release") {
             keyAlias = releaseKeyAliasValue
             keyPassword = releaseKeyPasswordValue
@@ -375,7 +385,7 @@ androidComponents {
         variant.applicationId.set(
             when {
                 isPlaystore -> "com.nuvio.appdebug"
-                useLocalFfmpegDecoder -> "com.nuvio.tv.eac3"
+                useLocalFfmpegDecoder -> "com.nuvio.tv.eac3.dev"
                 else -> "com.nuviodebug.com"
             }
         )
