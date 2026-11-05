@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/eac3-transcoding
+      - codex/eac3-7.1
   workflow_dispatch:
 
 permissions:
@@ -77,12 +78,15 @@ jobs:
             --stacktrace --no-daemon
       - name: Assemble experimental NuvioTV debug APK
         run: |
-          ./gradlew :app:assembleFullDebug :app:testFullDebugUnitTest \
-            --tests com.nuvio.tv.data.local.PlayerSettingsTranscodingTest \
-            --tests com.nuvio.tv.ui.screens.player.DebugAudioFormatTest \
+          ./gradlew :app:assembleFullDebug \
             -PuseLocalFfmpegDecoder=true \
             -Pandroid.injected.testOnly=false \
             -Pandroid.injected.build.abi=armeabi-v7a \
+            --stacktrace --no-daemon
+          ./gradlew :app:testFullDebugUnitTest \
+            --tests com.nuvio.tv.data.local.PlayerSettingsTranscodingTest \
+            --tests com.nuvio.tv.ui.screens.player.DebugAudioFormatTest \
+            -PuseLocalFfmpegDecoder=true \
             --stacktrace --no-daemon
       - name: Collect and verify experimental full debug APK
         run: |
