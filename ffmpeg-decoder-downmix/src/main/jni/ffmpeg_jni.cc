@@ -469,6 +469,11 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
       return NULL;
     }
     env->GetByteArrayRegion(extraData, 0, size, (jbyte*)codecContext->extradata);
+    if (env->ExceptionCheck()) {
+      LOGE("Failed to read codec initialization data from Java.");
+      releaseContext(decoderContext);
+      return NULL;
+    }
     // FFmpeg bitstream readers may access the required padding after extradata.
     // The padding must be zero-filled, not left with uninitialized heap bytes.
     memset(codecContext->extradata + size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
