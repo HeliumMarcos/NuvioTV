@@ -103,3 +103,7 @@ The native `ffmpegFlushEncodedFrames()` JNI entry point and Java `flushEncodedFr
 ### Encoder flush safety guards
 
 The experimental encoder-finalization entry point now rejects repeated EOF submission for the same encoder context and checks the FFmpeg silence-padding return value before consuming the final FIFO samples. The guard is cleared when `clearResampler()` resets encoder state. This does **not** complete decoder/resampler draining or Media3 EOS integration. Native compilation, unit tests, and playback validation have not yet been performed.
+
+### Delayed decoder-frame drain primitive
+
+Native `ffmpegDrainDecoder()` now passes a null input packet to `decodePacket()` and accepts FFmpeg decoder EOF as a normal drain result. Its Java bridge `drainDelayedDecoderFrames(SimpleDecoderOutputBuffer)` can return an encoded access unit and its media timestamp. The native decoder rejects new input after draining starts until reset. **Neither bridge is invoked by the existing `SimpleDecoder` EOS path.** A successful decoder drain does not imply the resampler is drained; `swr_convert(..., nullptr, 0)` or equivalent must process buffered samples before calling the terminal encoder flush. An output scheduler must also emit every queued access unit before signaling Media3 EOS. These APIs have not been compiled or tested on Android.
