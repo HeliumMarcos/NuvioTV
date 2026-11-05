@@ -1107,12 +1107,12 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
           return AUDIO_DECODER_ERROR_OTHER;
         }
         int requestedSamples = decoderContext->encoder_context->frame_size;
-        int readSamples = av_audio_fifo_read(
+        int peekedSamples = av_audio_fifo_peek(
             decoderContext->fifo, (void**)decoderContext->encoder_frame->data,
             requestedSamples);
-        if (readSamples != requestedSamples) {
-          LOGE("AC3 FIFO read failed: expected %d samples, read %d",
-               requestedSamples, readSamples);
+        if (peekedSamples != requestedSamples) {
+          LOGE("AC3 FIFO peek failed: expected %d samples, got %d",
+               requestedSamples, peekedSamples);
           return AUDIO_DECODER_ERROR_OTHER;
         }
 
@@ -1121,9 +1121,12 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
         decoderContext->encoder_frame->pts = decoderContext->next_encoder_pts;
         int ret = avcodec_send_frame(decoderContext->encoder_context, decoderContext->encoder_frame);
         if (ret < 0) {
+          // In particular, EAGAIN must not consume an unaccepted frame.
+          // Report the backpressure rather than silently truncating audio.
           logError("avcodec_send_frame", ret);
           return AUDIO_DECODER_ERROR_OTHER;
         }
+        av_audio_fifo_drain(decoderContext->fifo, requestedSamples);
         decoderContext->next_encoder_pts += requestedSamples;
 
         while (true) {
