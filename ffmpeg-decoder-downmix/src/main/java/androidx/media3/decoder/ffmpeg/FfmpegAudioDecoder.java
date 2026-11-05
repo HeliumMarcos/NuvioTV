@@ -467,6 +467,13 @@ import java.util.List;
       int outputSize, int userCenterMixLevelDb, boolean downmixNormalizationEnabled,
       float lfeMixLevel);
 
+  // Zero bytes from drainDelayedDecoderFrames() does not prove EOF.
+  boolean isDecoderDrainComplete() {
+    return ffmpegIsDecoderDrainComplete(nativeContext);
+  }
+
+  private native boolean ffmpegIsDecoderDrainComplete(long context);
+
   // Only call after the upstream FFmpeg decoder and resampler are drained.
   // Returns the number of queued encoded packets, or a negative error.
   int flushEncodedFramesAfterUpstreamDrain() throws FfmpegDecoderException {
