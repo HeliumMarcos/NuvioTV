@@ -107,7 +107,8 @@ internal fun PlayerDebugStatsOverlay(
         while (true) {
             // Player fields must be read on this thread; everything else blocks, so it goes to IO.
             val player = viewModel.exoPlayer
-            val audioOutput = viewModel.getDebugAudioOutput()
+            val audioFormat = player?.audioFormat
+            val audioOutput = viewModel.getDebugAudioOutput(audioFormat)
             val snapshot = player?.let {
                 PlayerSnapshot(
                     aheadMs = (it.bufferedPosition - it.currentPosition).coerceAtLeast(0L),
@@ -117,7 +118,7 @@ internal fun PlayerDebugStatsOverlay(
                     droppedFrames = runCatching { it.videoDecoderCounters?.droppedBufferCount }.getOrNull() ?: 0,
                     fileSizeBytes = viewModel.getCurrentFileSizeBytes() ?: probedFileSize,
                     nativeMemoryBytes = viewModel.getPlayerNativeMemoryBytes(),
-                    inputAudioDescription = DebugAudioFormat.describeInput(it.audioFormat),
+                    inputAudioDescription = DebugAudioFormat.describeInput(audioFormat),
                     outputAudioDescription = audioOutput?.format,
                     audioRouteDescription = audioOutput?.route
                 )

@@ -225,7 +225,8 @@ class PlayerViewModel @Inject constructor(
 
     fun getCurrentFileSizeBytes(): Long? = controller.currentVideoSize
 
-    internal fun getDebugAudioOutput(): DebugAudioOutput? = controller.debugAudioTrack?.snapshot()
+    internal fun getDebugAudioOutput(source: androidx.media3.common.Format?): DebugAudioOutput? =
+        controller.debugAudioTrack?.snapshot(source)
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun getPlayerNativeMemoryBytes(): Long? {

@@ -15,12 +15,19 @@ internal object DebugAudioFormat {
             hasLfe = null) + if (it.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC) " · Atmos" else ""
     }
 
-    fun describeOutput(config: AudioSink.AudioTrackConfig): String = describe(
-        encodingName(config.encoding),
-        Integer.bitCount(config.channelConfig),
-        config.sampleRate,
-        config.channelConfig and AudioFormat.CHANNEL_OUT_LOW_FREQUENCY != 0
-    ) + if (config.encoding == C.ENCODING_E_AC3_JOC) " · Atmos" else ""
+    fun describeOutput(config: AudioSink.AudioTrackConfig, source: Format? = null): String {
+        val isJoc = config.encoding == C.ENCODING_E_AC3_JOC
+        // Media3 can configure JOC with the route's maximum channel count. The
+        // AudioTrack mask in this case does not describe the compressed bed.
+        val channels = if (isJoc) {
+            source?.takeIf { it.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC }?.channelCount ?: Format.NO_VALUE
+        } else {
+            Integer.bitCount(config.channelConfig)
+        }
+        val hasLfe = if (isJoc) null else config.channelConfig and AudioFormat.CHANNEL_OUT_LOW_FREQUENCY != 0
+        return describe(encodingName(config.encoding), channels, config.sampleRate, hasLfe) +
+            if (isJoc) " · Atmos" else ""
+    }
 
     internal fun describe(codec: String, channels: Int, sampleRate: Int, hasLfe: Boolean? = null): String {
         val channelLabel = when {
@@ -73,7 +80,7 @@ internal class DebugAudioTrackBinding(
     private val track: android.media.AudioTrack,
     private val config: AudioSink.AudioTrackConfig
 ) {
-    fun snapshot(): DebugAudioOutput? = runCatching {
+    fun snapshot(source: Format?): DebugAudioOutput? = runCatching {
         if (track.state != android.media.AudioTrack.STATE_INITIALIZED) return@runCatching null
         val device = track.routedDevice
         val route = device?.let {
@@ -90,6 +97,6 @@ internal class DebugAudioTrackBinding(
             val name = it.productName?.toString()?.trim().orEmpty()
             if (name.isEmpty() || name.equals(type, ignoreCase = true)) type else "$type / $name"
         }
-        DebugAudioOutput(DebugAudioFormat.describeOutput(config), route)
+        DebugAudioOutput(DebugAudioFormat.describeOutput(config, source), route)
     }.getOrNull()
 }

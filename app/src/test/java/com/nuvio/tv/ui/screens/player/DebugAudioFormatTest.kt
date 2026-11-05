@@ -53,4 +53,25 @@ class DebugAudioFormatTest {
             .setLabel("TrueHD Atmos 7.1.4").setChannelCount(8).setSampleRate(48000).build()
         assertEquals("TrueHD · 7.1 (8 canais) · 48 kHz", DebugAudioFormat.describeInput(source))
     }
+
+    @Test
+    fun `JOC passthrough shows source bed even when AudioTrack opens with eight channels`() {
+        val source = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_E_AC3_JOC)
+            .setChannelCount(6).setSampleRate(48000).build()
+        val output = AudioSink.AudioTrackConfig(C.ENCODING_E_AC3_JOC, 48000,
+            AudioFormat.CHANNEL_OUT_7POINT1_SURROUND, false, true, 32768)
+        assertEquals("DDP (E-AC-3) · 5.1 (6 canais) · 48 kHz · Atmos",
+            DebugAudioFormat.describeOutput(output, source))
+        assertEquals("DDP (E-AC-3) · ? ch · 48 kHz · Atmos", DebugAudioFormat.describeOutput(output))
+    }
+
+    @Test
+    fun `plain EAC3 output keeps AudioTrack layout and omits source Atmos`() {
+        val source = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_E_AC3_JOC)
+            .setChannelCount(6).setSampleRate(48000).build()
+        val output = AudioSink.AudioTrackConfig(C.ENCODING_E_AC3, 48000,
+            AudioFormat.CHANNEL_OUT_7POINT1_SURROUND, false, true, 32768)
+        assertEquals("DDP (E-AC-3) · 7.1 (8 canais) · 48 kHz",
+            DebugAudioFormat.describeOutput(output, source))
+    }
 }
