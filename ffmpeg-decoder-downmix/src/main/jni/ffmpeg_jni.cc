@@ -559,17 +559,17 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
       }
       dc->encoder_frame->pts = dc->next_encoder_pts;
       ret = avcodec_send_frame(dc->encoder_context, dc->encoder_frame);
-      if (ret == AVERROR(EAGAIN)) {
-        // Keep the FIFO frame intact. The caller can retry after the
-        // scheduler consumes packets and the encoder has made progress.
-        return dc->pending_packet_count;
-      }
-      if (ret < 0) {
+      const bool encoderNeedsDrain = ret == AVERROR(EAGAIN);
+      if (ret < 0 && !encoderNeedsDrain) {
         logError("avcodec_send_frame (resampler drain)", ret);
         return AUDIO_DECODER_ERROR_OTHER;
       }
-      av_audio_fifo_drain(dc->fifo, frameSize);
-      dc->next_encoder_pts += frameSize;
+      if (!encoderNeedsDrain) {
+        av_audio_fifo_drain(dc->fifo, frameSize);
+        dc->next_encoder_pts += frameSize;
+      }
+      // EAGAIN means the encoder has output waiting. Collect it before
+      // returning, but keep the unaccepted FIFO frame for the next call.
       for (;;) {
         ret = avcodec_receive_packet(dc->encoder_context, dc->encoder_packet);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -602,6 +602,9 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
         }
         dc->pending_packet_tail = node;
         dc->pending_packet_count++;
+      }
+      if (encoderNeedsDrain) {
+        return dc->pending_packet_count;
       }
     }
   }
