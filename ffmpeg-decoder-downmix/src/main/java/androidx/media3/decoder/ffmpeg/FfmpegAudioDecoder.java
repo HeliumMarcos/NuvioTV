@@ -36,6 +36,7 @@ import androidx.media3.decoder.SimpleDecoder;
 import androidx.media3.decoder.SimpleDecoderOutputBuffer;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 /** FFmpeg audio decoder with optional float output for active FFmpeg downmixing. */
 /* package */ final class FfmpegAudioDecoder
@@ -73,6 +74,8 @@ import java.util.List;
   // Accessed only by the decoder/output scheduler thread. Reset on seek.
   private volatile boolean encodedEndOfStreamComplete;
   private volatile boolean syntheticDrainStepFinished;
+  @Nullable private volatile Decoder.Callback drainWakeupCallback;
+  @Nullable private volatile Executor drainWakeupExecutor;
 
   public FfmpegAudioDecoder(
       Format format,
@@ -159,6 +162,14 @@ import java.util.List;
         // Allows the renderer-facing wrapper to schedule the next drain
         // step even when SimpleDecoder discards an empty output buffer.
         syntheticDrainStepFinished = true;
+        // A synthetic step can produce no output. SimpleDecoder then discards
+        // its buffer and does not emit an output-available callback, so wake
+        // the renderer explicitly to schedule the next drain step.
+        @Nullable Decoder.Callback callback = drainWakeupCallback;
+        @Nullable Executor executor = drainWakeupExecutor;
+        if (callback != null && executor != null) {
+          executor.execute(callback::onOutputBufferAvailable);
+        }
       }
     }
     if ((outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3)
@@ -462,6 +473,12 @@ import java.util.List;
     }
     encodedEndOfStreamComplete = true;
     return false;
+  }
+
+  void setDrainWakeupCallback(
+      @Nullable Decoder.Callback callback, @Nullable Executor executor) {
+    drainWakeupCallback = callback;
+    drainWakeupExecutor = executor;
   }
 
   boolean hasFinishedSyntheticDrainStep() {
