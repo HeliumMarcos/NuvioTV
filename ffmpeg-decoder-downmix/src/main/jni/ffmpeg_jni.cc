@@ -133,6 +133,7 @@ struct DecoderContext {
   // Terminal encoder drain must be requested at most once per context.
   bool encoder_flush_started;
   bool decoder_drain_started;
+  bool decoder_drain_completed;
   // Presentation timestamp of the next encoded frame, in output samples.
   int64_t next_encoder_pts;
   // First packet PTS emitted by the most recent decodePacket call.
@@ -445,6 +446,15 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainDecoder, jlong context,
                       userCenterMixLevelDb, downmixNormalizationEnabled,
                       lfeMixLevel,
                       GrowOutputBufferCallback{env, thiz, decoderOutputBuffer});
+}
+
+// A scheduler must distinguish an empty output from confirmed decoder EOF.
+AUDIO_DECODER_FUNC(jboolean, ffmpegIsDecoderDrainComplete, jlong context) {
+  if (!context) {
+    return JNI_FALSE;
+  }
+  return ((DecoderContext*)context)->decoder_drain_completed
+      ? JNI_TRUE : JNI_FALSE;
 }
 
 // Flush the encoder after upstream decoder and resampler have been drained.
@@ -769,8 +779,11 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
     result = avcodec_receive_frame(codecContext, frame);
     if (result) {
       av_frame_free(&frame);
-      if (result == AVERROR(EAGAIN) ||
-          (result == AVERROR_EOF && packet == nullptr)) {
+      if (result == AVERROR_EOF && packet == nullptr) {
+        decoderContext->decoder_drain_completed = true;
+        break;
+      }
+      if (result == AVERROR(EAGAIN)) {
         break;
       }
       logError("avcodec_receive_frame", result);
@@ -1284,6 +1297,7 @@ void clearResampler(DecoderContext* decoderContext) {
   decoderContext->encoder_initialized = false;
   decoderContext->encoder_flush_started = false;
   decoderContext->decoder_drain_started = false;
+  decoderContext->decoder_drain_completed = false;
   decoderContext->next_encoder_pts = 0;
   decoderContext->last_output_pts = AV_NOPTS_VALUE;
   decoderContext->last_output_packet_count = 0;
