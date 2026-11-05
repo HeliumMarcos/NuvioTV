@@ -28,6 +28,13 @@ jobs:
           ./configure --disable-everything --disable-autodetect --disable-doc --disable-debug --disable-x86asm --enable-ffmpeg --enable-protocol=file --enable-demuxer=wav,eac3 --enable-muxer=wav,eac3 --enable-decoder=pcm_s16le,eac3 --enable-encoder=eac3,pcm_s16le --enable-parser=ac3 --enable-filter=aresample,anull,aformat --enable-swresample
           make -j4
           ./ffmpeg -hide_banner -h encoder=eac3
+      - name: Record unmodified decoder result
+        continue-on-error: true
+        run: python3 experiments/eac3-7.1/verify_channels.py "$RUNNER_TEMP/ffmpeg-proof/ffmpeg" "$RUNNER_TEMP/proof-results/original-decoder"
+      - name: Isolate decoder substream assembly
+        run: |
+          python3 experiments/eac3-7.1/fix_decoder_mapping.py "$RUNNER_TEMP/ffmpeg-proof"
+          make -C "$RUNNER_TEMP/ffmpeg-proof" -j4
       - name: Verify discrete 7.1 channels and 5.1 regression
         run: python3 experiments/eac3-7.1/verify_channels.py "$RUNNER_TEMP/ffmpeg-proof/ffmpeg" "$RUNNER_TEMP/proof-results"
       - name: Upload proof artifacts

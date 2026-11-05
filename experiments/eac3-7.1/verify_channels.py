@@ -47,7 +47,7 @@ for channels, layout in [(8, '7.1'), (6, '5.1')]:
         leakage = max(v for k, v in enumerate(energies) if k != c)
         if energies[c] <= 5 * max(leakage, 1):
             failures.append((layout, 'excess crosstalk', c, energies))
-        print(f'{layout} channel {c}: {freqs[c]} Hz confirmed; amplitude={energies[c]:.1f}; leakage={leakage:.1f}', flush=True)
+        print(f'{layout} channel {c}: {freqs[c]} Hz expected; amplitude={energies[c]:.1f}; leakage={leakage:.1f}', flush=True)
     print(f'{layout}: {len(failures) - previous_failures} validation failures', flush=True)
 
 for failure in failures:
