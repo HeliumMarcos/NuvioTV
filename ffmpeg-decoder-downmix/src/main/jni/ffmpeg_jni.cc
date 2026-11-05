@@ -508,9 +508,28 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
     if (decoderContext->transcode_to_ac3) {
       int outSamples = swr_get_out_samples(decoderContext->resample_context, frame->nb_samples);
       int nb_channels = decoderContext->output_layout.nb_channels;
+      if (outSamples <= 0 || nb_channels <= 0) {
+        LOGE("Invalid AC3 resampler dimensions: samples=%d channels=%d",
+             outSamples, nb_channels);
+        av_frame_free(&frame);
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
       uint8_t** converted_data = (uint8_t**)calloc(nb_channels, sizeof(uint8_t*));
+      if (!converted_data) {
+        av_frame_free(&frame);
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
       for (int i = 0; i < nb_channels; i++) {
-        converted_data[i] = (uint8_t*)malloc(outSamples * sizeof(float));
+        converted_data[i] = (uint8_t*)malloc((size_t)outSamples * sizeof(float));
+        if (!converted_data[i]) {
+          for (int j = 0; j < i; j++) {
+            free(converted_data[j]);
+          }
+          free(converted_data);
+          av_frame_free(&frame);
+          LOGE("Failed to allocate AC3 conversion buffer");
+          return AUDIO_DECODER_ERROR_OTHER;
+        }
       }
 
       int convertedSamples =
