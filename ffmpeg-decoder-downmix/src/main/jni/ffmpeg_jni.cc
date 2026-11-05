@@ -124,6 +124,8 @@ struct DecoderContext {
   AVFrame* encoder_frame;
   AVPacket* encoder_packet;
   bool encoder_initialized;
+  // Presentation timestamp of the next encoded frame, in output samples.
+  int64_t next_encoder_pts;
 };
 
 static jmethodID growOutputBufferMethod;
@@ -637,11 +639,15 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
           return AUDIO_DECODER_ERROR_OTHER;
         }
 
+        // Encoder PTS uses the configured sample-based time base. Advance
+        // only after the encoder accepts the frame.
+        decoderContext->encoder_frame->pts = decoderContext->next_encoder_pts;
         int ret = avcodec_send_frame(decoderContext->encoder_context, decoderContext->encoder_frame);
         if (ret < 0) {
           logError("avcodec_send_frame", ret);
           return AUDIO_DECODER_ERROR_OTHER;
         }
+        decoderContext->next_encoder_pts += requestedSamples;
 
         while (true) {
           ret = avcodec_receive_packet(decoderContext->encoder_context, decoderContext->encoder_packet);
@@ -873,6 +879,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     }
     enc_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
     enc_ctx->sample_rate = outputSampleRate;
+    enc_ctx->time_base = AVRational{1, outputSampleRate};
     int layoutResult = av_channel_layout_copy(&enc_ctx->ch_layout, &outputLayout);
     if (layoutResult < 0) {
       logError("av_channel_layout_copy (encoder)", layoutResult);
@@ -1013,6 +1020,7 @@ void clearResampler(DecoderContext* decoderContext) {
     decoderContext->encoder_packet = nullptr;
   }
   decoderContext->encoder_initialized = false;
+  decoderContext->next_encoder_pts = 0;
 }
 
 void resetLimiter(AudioLimiter* limiter) {
