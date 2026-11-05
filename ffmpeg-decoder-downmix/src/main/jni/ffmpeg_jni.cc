@@ -421,6 +421,11 @@ DecoderContext* createContext(JNIEnv* env, const AVCodec* codec,
     LOGE("Failed to allocate decoder context.");
     return NULL;
   }
+  if (transcodingMode < 0 || transcodingMode > 2) {
+    LOGE("Unsupported audio transcoding mode: %d", transcodingMode);
+    free(decoderContext);
+    return NULL;
+  }
   decoderContext->transcoding_mode = transcodingMode;
   resetLimiter(&decoderContext->limiter);
 
@@ -572,6 +577,13 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
       }
 
       while (av_audio_fifo_size(decoderContext->fifo) >= decoderContext->encoder_context->frame_size) {
+        // The encoder may retain a reference to the previous frame.
+        // Obtain writable storage before overwriting it with FIFO samples.
+        int writableResult = av_frame_make_writable(decoderContext->encoder_frame);
+        if (writableResult < 0) {
+          logError("av_frame_make_writable (encoder)", writableResult);
+          return AUDIO_DECODER_ERROR_OTHER;
+        }
         int requestedSamples = decoderContext->encoder_context->frame_size;
         int readSamples = av_audio_fifo_read(
             decoderContext->fifo, (void**)decoderContext->encoder_frame->data,
