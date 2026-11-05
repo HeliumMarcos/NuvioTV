@@ -78,7 +78,7 @@ then
 fi
 
 cd "${FFMPEG_MODULE_PATH}/jni/ffmpeg"
-if [[ "$TARGET_ABI" == "all" ]]; then
+if [[ "$TARGET_ABI" == "all" || "$TARGET_ABI" == "armeabi-v7a" ]]; then
 ./configure \
     --libdir=android-libs/armeabi-v7a \
     --arch=arm \
