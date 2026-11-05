@@ -66,6 +66,9 @@ import java.util.List;
   private volatile int sampleRate;
   // First input timestamp anchors native encoder-relative PTS to media time.
   private long encodedTimeAnchorUs = C.TIME_UNSET;
+  // Accessed only by the decoder/output scheduler thread. Reset on seek.
+  private boolean encodedEndOfStreamFlushStarted;
+  private boolean encodedEndOfStreamComplete;
 
   public FfmpegAudioDecoder(
       Format format,
@@ -137,6 +140,8 @@ import java.util.List;
       // Query the resulting output format again on the next non-empty buffer.
       hasOutputFormat = false;
       encodedTimeAnchorUs = C.TIME_UNSET;
+      encodedEndOfStreamFlushStarted = false;
+      encodedEndOfStreamComplete = false;
     }
     if ((outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3)
         && encodedTimeAnchorUs == C.TIME_UNSET) {
@@ -392,6 +397,57 @@ import java.util.List;
       int userCenterMixLevelDb,
       boolean downmixNormalizationEnabled,
       float lfeMixLevel);
+
+  /**
+   * Advances compressed end-of-stream processing by at most one output access unit.
+   *
+   * <p>This method must be called by a future drain-aware output scheduler
+   * after the last compressed input, on the same thread that owns the native
+   * decoder. It must never be called concurrently with decode() or reset.
+   * A false result means no output was produced in this step, NOT necessarily
+   * that EOS is complete. Query isEncodedEndOfStreamComplete() separately.
+   */
+  boolean drainNextEncodedEndOfStreamBuffer(SimpleDecoderOutputBuffer outputBuffer)
+      throws FfmpegDecoderException {
+    if (outputEncoding != C.ENCODING_AC3 && outputEncoding != C.ENCODING_E_AC3) {
+      throw new FfmpegDecoderException("Encoded EOS drain requires AC-3 or E-AC-3 output.");
+    }
+    if (encodedEndOfStreamComplete) {
+      return false;
+    }
+    // Always emit previously encoded access units before producing more.
+    // This also keeps the bounded native packet queue from saturating.
+    if (dequeuePendingEncodedPacket(outputBuffer)) {
+      return true;
+    }
+    if (!isDecoderDrainComplete()) {
+      int size = drainDelayedDecoderFrames(outputBuffer);
+      if (size > 0) {
+        return true;
+      }
+      // The decoder can return zero bytes without having reached EOF.
+      return false;
+    }
+    if (!isResamplerDrainComplete()) {
+      drainResamplerAfterDecoderEof();
+      return dequeuePendingEncodedPacket(outputBuffer);
+    }
+    if (!encodedEndOfStreamFlushStarted) {
+      // The native encoder flush is terminal; never submit EOF twice.
+      flushEncodedFramesAfterUpstreamDrain();
+      encodedEndOfStreamFlushStarted = true;
+      return dequeuePendingEncodedPacket(outputBuffer);
+    }
+    if (dequeuePendingEncodedPacket(outputBuffer)) {
+      return true;
+    }
+    encodedEndOfStreamComplete = true;
+    return false;
+  }
+
+  boolean isEncodedEndOfStreamComplete() {
+    return encodedEndOfStreamComplete;
+  }
 
   // For a future drain-capable output scheduler. SimpleDecoder cannot emit
   // additional output buffers without another input, including at EOS.
