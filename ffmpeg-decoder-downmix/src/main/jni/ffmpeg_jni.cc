@@ -567,6 +567,16 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
   }
 }
 
+// Do not infer resampler completion from the number of queued packets:
+// resampling may finish without producing a complete compressed frame.
+AUDIO_DECODER_FUNC(jboolean, ffmpegIsResamplerDrainComplete, jlong context) {
+  if (!context) {
+    return JNI_FALSE;
+  }
+  return ((DecoderContext*)context)->resampler_drain_completed
+      ? JNI_TRUE : JNI_FALSE;
+}
+
 // Flush the encoder after upstream decoder and resampler have been drained.
 // This is deliberately separate from Media3 EOS handling: calling it before
 // upstream drain would truncate buffered decoded/resampled audio.
