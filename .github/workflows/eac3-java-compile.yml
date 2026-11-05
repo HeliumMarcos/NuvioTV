@@ -1,0 +1,32 @@
+name: Experimental E-AC-3 Java compilation
+
+on:
+  push:
+    branches:
+      - feature/eac3-transcoding
+    paths:
+      - '.github/workflows/eac3-java-compile.yml'
+      - 'ffmpeg-decoder-downmix/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-decoder-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile experimental FFmpeg decoder Java sources
+        run: ./gradlew :ffmpeg-decoder-downmix:compileDebugJavaWithJavac --stacktrace --no-daemon
