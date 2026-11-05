@@ -195,7 +195,22 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     boolean isDtsOrTrueHd = MimeTypes.AUDIO_DTS.equals(mimeType)
         || MimeTypes.AUDIO_DTS_HD.equals(mimeType)
         || MimeTypes.AUDIO_TRUEHD.equals(mimeType);
+    // Do not select a compressed output format that the actual sink rejects.
+    // Keep PCM decoding available as the compatibility fallback.
+    boolean ac3Supported = sinkSupportsFormat(
+        new Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_AC3)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build());
+    boolean eac3Supported = preferEac3Transcoding && sinkSupportsFormat(
+        new Format.Builder()
+            .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
+            .setChannelCount(6)
+            .setSampleRate(48000)
+            .build());
     boolean transcodeToAc3 = forceOpticalPassthrough &&
+        (ac3Supported || eac3Supported) &&
         !MimeTypes.AUDIO_AC3.equals(mimeType) &&
         !MimeTypes.AUDIO_E_AC3.equals(mimeType) &&
         (format.channelCount > 2 || format.channelCount <= 0 || isDtsOrTrueHd);
@@ -205,12 +220,6 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     int nativeOutputChannelCount;
     @Nullable String outputLayoutName;
     if (transcodeToAc3) {
-      boolean eac3Supported = preferEac3Transcoding && sinkSupportsFormat(
-          new Format.Builder()
-              .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
-              .setChannelCount(6)
-              .setSampleRate(48000)
-              .build());
       outputEncoding = eac3Supported ? C.ENCODING_E_AC3 : C.ENCODING_AC3;
       nativeOutputChannelCount = 6;
       outputLayoutName = "5.1";
