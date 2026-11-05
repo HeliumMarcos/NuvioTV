@@ -504,6 +504,7 @@ import java.util.concurrent.Executor;
   void invalidatePendingEncodedPackets() {
     pendingEncodedPacketsSnapshot = 0;
     syntheticDrainStepFinished = false;
+    encodedEndOfStreamComplete = false;
   }
 
   private void notifyDrainWakeup() {
