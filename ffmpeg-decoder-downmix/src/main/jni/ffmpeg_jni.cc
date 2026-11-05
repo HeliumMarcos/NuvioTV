@@ -712,6 +712,12 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
     // EAGAIN requires receiving packets before retrying the terminal frame.
   }
   while (true) {
+    // Leave encoder packets inside libavcodec until the Media3 scheduler
+    // consumes enough queued access units. Never receive a packet that
+    // cannot be enqueued without loss.
+    if (decoderContext->pending_packet_count >= 248) {
+      return decoderContext->pending_packet_count;
+    }
     ret = avcodec_receive_packet(decoderContext->encoder_context,
                                  decoderContext->encoder_packet);
     if (ret == AVERROR_EOF) {
