@@ -13,7 +13,9 @@ freqs = [271, 383, 503, 83, 719, 887, 1061, 1291]
 def run(*args):
     subprocess.run([FFMPEG, '-hide_banner', '-nostdin', '-y', *map(str, args)], check=True)
 
+failures = []
 for channels, layout in [(8, '7.1'), (6, '5.1')]:
+    previous_failures = len(failures)
     src = out / f'input-{channels}.wav'
     pcm = array.array('h')
     for t in range(rate * 3):
@@ -40,9 +42,14 @@ for channels, layout in [(8, '7.1'), (6, '5.1')]:
             im = sum(v * math.sin(2 * math.pi * f * t / rate) for t, v in enumerate(signal))
             energies.append((re * re + im * im) ** 0.5 / n)
         peak = max(range(channels), key=energies.__getitem__)
-        assert peak == c, ('wrong channel mapping', c, peak, energies)
-        assert energies[c] > 100, ('missing channel', c, energies)
+        if peak != c or energies[c] <= 100:
+            failures.append((layout, 'missing or incorrect channel', c, peak, energies))
         leakage = max(v for k, v in enumerate(energies) if k != c)
-        assert energies[c] > 5 * max(leakage, 1), ('excess crosstalk', c, energies)
+        if energies[c] <= 5 * max(leakage, 1):
+            failures.append((layout, 'excess crosstalk', c, energies))
         print(f'{layout} channel {c}: {freqs[c]} Hz confirmed; amplitude={energies[c]:.1f}; leakage={leakage:.1f}', flush=True)
-    print(f'PASS: E-AC-3 {layout}, all {channels} discrete channels verified', flush=True)
+    print(f'{layout}: {len(failures) - previous_failures} validation failures', flush=True)
+
+for failure in failures:
+    print('FAIL:', failure, flush=True)
+assert not failures, f'{len(failures)} channel validation failures'
