@@ -839,9 +839,16 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     }
     enc_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
     enc_ctx->sample_rate = outputSampleRate;
-    av_channel_layout_copy(&enc_ctx->ch_layout, &outputLayout);
+    int layoutResult = av_channel_layout_copy(&enc_ctx->ch_layout, &outputLayout);
+    if (layoutResult < 0) {
+      logError("av_channel_layout_copy (encoder)", layoutResult);
+      avcodec_free_context(&enc_ctx);
+      av_channel_layout_uninit(&inputLayout);
+      av_channel_layout_uninit(&outputLayout);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
     enc_ctx->bit_rate = 640000;
-    
+
     int ret = avcodec_open2(enc_ctx, encoder, NULL);
     if (ret < 0) {
       logError("avcodec_open2 (encoder)", ret);
@@ -851,6 +858,13 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       return AUDIO_DECODER_ERROR_OTHER;
     }
     decoderContext->encoder_context = enc_ctx;
+    if (enc_ctx->frame_size <= 0) {
+      LOGE("Invalid AC3/EAC3 encoder frame size: %d", enc_ctx->frame_size);
+      avcodec_free_context(&decoderContext->encoder_context);
+      av_channel_layout_uninit(&inputLayout);
+      av_channel_layout_uninit(&outputLayout);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
 
     decoderContext->fifo = av_audio_fifo_alloc(enc_ctx->sample_fmt, enc_ctx->ch_layout.nb_channels, 1);
     if (!decoderContext->fifo) {
