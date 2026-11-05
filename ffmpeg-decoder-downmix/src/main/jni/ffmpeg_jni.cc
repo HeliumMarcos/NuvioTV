@@ -128,6 +128,8 @@ struct DecoderContext {
   int64_t next_encoder_pts;
   // First packet PTS emitted by the most recent decodePacket call.
   int64_t last_output_pts;
+  // Number of complete compressed access units emitted by the last decode.
+  int last_output_packet_count;
 };
 
 static jmethodID growOutputBufferMethod;
@@ -309,6 +311,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
   }
   DecoderContext* decoderContext = (DecoderContext*)context;
   decoderContext->last_output_pts = AV_NOPTS_VALUE;
+  decoderContext->last_output_packet_count = 0;
   AVPacket* packet = av_packet_alloc();
   if (!packet) {
     LOGE("Failed to allocate packet.");
@@ -339,6 +342,13 @@ uint8_t* GrowOutputBufferCallback::operator()(int requiredSize) const {
 
 // Returns the first compressed packet timestamp relative to this encoder
 // session, in microseconds. Java adds the media timeline anchor.
+AUDIO_DECODER_FUNC(jint, ffmpegGetOutputPacketCount, jlong context) {
+  if (!context) {
+    return 0;
+  }
+  return ((DecoderContext*)context)->last_output_packet_count;
+}
+
 AUDIO_DECODER_FUNC(jlong, ffmpegGetOutputTimeUs, jlong context) {
   if (!context) {
     return (jlong)AV_NOPTS_VALUE;
@@ -690,6 +700,10 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
               decoderContext->last_output_pts = packetDts;
             }
           }
+          // Media3's compressed sink expects one access unit per buffer.
+          // Report the count so the Java decoder can reject an unsupported
+          // multi-packet batch instead of silently misrepresenting it.
+          decoderContext->last_output_packet_count++;
           int packetSize = decoderContext->encoder_packet->size;
           // Guard the signed JNI buffer size before computing the required
           // capacity. Encoded packets can be produced in batches.
@@ -1054,6 +1068,7 @@ void clearResampler(DecoderContext* decoderContext) {
   decoderContext->encoder_initialized = false;
   decoderContext->next_encoder_pts = 0;
   decoderContext->last_output_pts = AV_NOPTS_VALUE;
+  decoderContext->last_output_packet_count = 0;
 }
 
 void resetLimiter(AudioLimiter* limiter) {
