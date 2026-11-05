@@ -91,3 +91,7 @@ JNI now enqueues encoded AC-3/E-AC-3 packets individually (including their PTS/D
 ### Independent queue-dequeue JNI primitive (not yet wired)
 
 Native `dequeueEncodedPacket()` now handles one access unit independently of decoding input. JNI exposes `ffmpegGetPendingEncodedPacketCount()` and `ffmpegDequeueEncodedPacket()`, with matching Java native declarations. A failed output-buffer grow does not consume the queued packet. These APIs are **not yet invoked** by the current `SimpleDecoder` implementation. The EOS lifecycle bypass still prevents emitting pending packets at track end; the FFmpeg decoder/resampler/encoder itself is also not yet flushed. A drain-capable output scheduler and full codec flush are still required before playback validation.
+
+### Java dequeue bridge
+
+The FFmpeg decoder now exposes package-private `getPendingEncodedPacketCount()` and `dequeuePendingEncodedPacket(SimpleDecoderOutputBuffer)`. The latter initializes a buffer, retrieves one queued compressed packet through JNI, and assigns its encoder-derived media timestamp. These helpers are **not invoked by `SimpleDecoder`**, whose EOS path still bypasses subclass decoding. Do not report EOS drain as complete until an output scheduler consumes the queued packets and explicitly flushes the FFmpeg decoder, resampler, FIFO and encoder before emitting EOS. A native build and playback tests remain outstanding.
