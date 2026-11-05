@@ -72,7 +72,7 @@ The native encoder receives monotonic sample-based frame PTS (`time_base = 1/480
 Required implementation review:
 1. Determine how `SimpleDecoder` handles EOS input and whether `decode()` is called for EOS buffers.
 2. Define a safe JNI drain path (decoder `avcodec_send_packet(NULL)`, `swr_convert` drain, padded final FIFO frame if appropriate, `avcodec_send_frame(NULL)`, and receive remaining packets).
-3. Preserve encoded packet boundaries or prove concatenated packets are accepted by the selected `AudioSink`.
+3. Validate the new one-packet-per-output native queue with the selected `AudioSink` and ensure the queue is emptied independently of new input.
 4. Verify output timestamps against the encoder sample counter (48 kHz) and actual input PTS, especially after seeks.
 5. Reset counters and discard buffered audio on seek/track changes; never emit pre-seek samples after reset.
 
@@ -86,4 +86,4 @@ The timestamp bridge is also subject to the multi-packet output framing limitati
 
 ### Encoded access-unit integrity gate
 
-JNI now records the number of AC-3/E-AC-3 packets emitted by each `decodePacket()` call. The Java decoder refuses any nonempty encoded output containing other than **exactly one** packet. This prevents silently passing concatenated packets to a Media3 output buffer that only carries one timestamp. **It is a fail-fast safety gate, not packet queueing**: playback can fail when FFmpeg emits more than one packet in a call. The next implementation must maintain a native/Java queue of individually timestamped access units and ensure that queued output is emitted before EOS. No runtime testing has verified the frequency of multi-packet batches.
+JNI now enqueues encoded AC-3/E-AC-3 packets individually (including their PTS/DTS) and dequeues **at most one** access unit per successful `decodePacket()` call. The Java decoder retains its one-access-unit validation. The native queue is bounded to 256 packets and is discarded on decoder reset/release. **This is not yet a complete output scheduling solution**: a queued packet is emitted only when another input packet reaches the decoder, and upstream `SimpleDecoder` bypasses subclass decoding for EOS input. Pending packets may therefore be lost at EOS, and a backlog can reach the queue limit and fail playback. Proper EOS draining and independent output dequeue remain release blockers. No native build or device test has validated this queue.
