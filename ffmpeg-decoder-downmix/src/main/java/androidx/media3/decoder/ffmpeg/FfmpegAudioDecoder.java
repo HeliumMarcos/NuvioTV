@@ -431,6 +431,21 @@ import java.util.List;
     return true;
   }
 
+  // Only call after the upstream FFmpeg decoder and resampler are drained.
+  // Returns the number of queued encoded packets, or a negative error.
+  int flushEncodedFramesAfterUpstreamDrain() throws FfmpegDecoderException {
+    if (outputEncoding != C.ENCODING_AC3 && outputEncoding != C.ENCODING_E_AC3) {
+      return 0;
+    }
+    int count = ffmpegFlushEncodedFrames(nativeContext);
+    if (count < 0) {
+      throw new FfmpegDecoderException("Failed to flush encoded audio frames.");
+    }
+    return count;
+  }
+
+  private native int ffmpegFlushEncodedFrames(long context);
+
   private native int ffmpegGetPendingEncodedPacketCount(long context);
 
   private native int ffmpegDequeueEncodedPacket(
