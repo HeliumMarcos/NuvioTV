@@ -190,3 +190,9 @@ The native `ffmpegDrainResampler` path now peeks at a complete encoder FIFO fram
 The terminal encoder flush now stops calling `avcodec_receive_packet` once the native pending packet queue reaches 248 entries, rather than receiving another packet and potentially failing when the hard limit of 256 is reached. The next scheduler iteration can dequeue pending packets and resume the encoder flush. The Media3 wrapper also rejects non-EOS media input after the EOS request has been accepted, preventing an invalid source-to-drain transition.
 
 **Stress tests:** force a large packet backlog while ending the stream; verify every encoded access unit is emitted exactly once, encoder EOF is eventually observed, and Media3 does not stall. Also verify rapid seek and decoder reinitialization, plus that ordinary PCM decoding is unchanged. These changes have not been compiled or run on an Android device.
+
+### Ordinary encoded-frame FIFO acceptance
+
+The main TrueHD-to-AC-3/E-AC-3 encoding path now uses `av_audio_fifo_peek` instead of removing an entire 1,536-sample frame before `avcodec_send_frame`. It calls `av_audio_fifo_drain` only after successful encoder acceptance, matching the EOS and resampler-drain safety invariant. The existing main decode path still **fails fast on encoder `AVERROR(EAGAIN)`**; it does not yet perform a receive/retry loop there. Preserving the samples is necessary but not sufficient for uninterrupted playback under encoder backpressure. Test that scenario explicitly before release.
+
+The Java packet-count diagnostic now describes invalid native packet scheduling rather than incorrectly claiming the encoded packet queue is absent. Android/NDK compilation and TCL C7K playback tests remain pending.
