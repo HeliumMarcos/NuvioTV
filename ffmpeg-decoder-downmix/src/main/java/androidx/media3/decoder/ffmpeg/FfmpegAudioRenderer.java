@@ -149,7 +149,8 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     }
     boolean supportsConfiguredOutput;
     if (transcodeToAc3) {
-      int sampleRate = format.sampleRate > 0 ? format.sampleRate : 48000;
+      // The native AC-3 transcoder resamples all input rates to 48 kHz.
+      int sampleRate = 48000;
       supportsConfiguredOutput = sinkSupportsFormat(
           new Format.Builder()
               .setSampleMimeType(MimeTypes.AUDIO_AC3)
