@@ -731,6 +731,16 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
   return decoderContext->pending_packet_count;
 }
 
+// Encoder EOF is confirmed only after avcodec_receive_packet returns EOF.
+// A successful send_frame(nullptr) alone is not sufficient.
+AUDIO_DECODER_FUNC(jboolean, ffmpegIsEncoderFlushComplete, jlong context) {
+  if (!context) {
+    return JNI_FALSE;
+  }
+  return ((DecoderContext*)context)->encoder_flush_completed
+      ? JNI_TRUE : JNI_FALSE;
+}
+
 AUDIO_DECODER_FUNC(jint, ffmpegGetPendingEncodedPacketCount, jlong context) {
   if (!context) {
     return 0;
