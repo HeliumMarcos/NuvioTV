@@ -21,21 +21,29 @@ jobs:
       FFMPEG_BUILD_DIR: ${{ github.workspace }}/ffmpeg-decoder-downmix/src/main/jni/ffmpeg/android-libs
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+        with:
+          submodules: false
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      # GitHub ubuntu-latest already includes Android command-line tools.
-      # setup-android@v3 tries to install the removed legacy 'tools' package.
-      - name: Locate preinstalled Android SDK
+      # v4 installs the command-line tools and puts sdkmanager on PATH.
+      # Unlike v3, it no longer requests the removed legacy 'tools' package.
+      - name: Setup Android SDK command-line tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+      - name: Verify SDK command-line tools
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" >> "$GITHUB_ENV"
+          set -euo pipefail
+          : "${ANDROID_HOME:?\"ANDROID_HOME is not set\"}"
+          command -v sdkmanager
           sdkmanager --version
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android build dependencies
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
+          test -x "$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
       - name: Fetch pinned FFmpeg source
         run: |
           git clone --depth 1 --branch n7.1.2 https://github.com/FFmpeg/FFmpeg.git "$FFMPEG_SOURCE_DIR"
