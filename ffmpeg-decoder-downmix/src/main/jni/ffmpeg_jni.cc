@@ -589,6 +589,16 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
         return AUDIO_DECODER_ERROR_INVALID_DATA;
       }
 
+      // swr_convert may consume input while buffering it internally, yet
+      // return no samples for this call. Do not write an empty FIFO block.
+      if (convertedSamples == 0) {
+        for (int i = 0; i < nb_channels; i++) {
+          free(converted_data[i]);
+        }
+        free(converted_data);
+        continue;
+      }
+
       if (decoderContext->downmix_active) {
         limitPlanarFloat(&decoderContext->limiter, converted_data,
                          convertedSamples, nb_channels,
