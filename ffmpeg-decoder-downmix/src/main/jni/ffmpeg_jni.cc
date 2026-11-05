@@ -545,10 +545,8 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
       LOGE("Failed to drain resampler samples into encoder FIFO.");
       return AUDIO_DECODER_ERROR_OTHER;
     }
-    if (produced == 0) {
-      dc->resampler_drain_completed = true;
-      return dc->pending_packet_count;
-    }
+    // A zero-sample resampler return does not imply the encoder FIFO is
+    // empty. Full frames retained after encoder EAGAIN must be retried.
     const int frameSize = dc->encoder_context->frame_size;
     while (av_audio_fifo_size(dc->fifo) >= frameSize) {
       ret = av_frame_make_writable(dc->encoder_frame);
@@ -606,6 +604,10 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
       if (encoderNeedsDrain) {
         return dc->pending_packet_count;
       }
+    }
+    if (produced == 0) {
+      dc->resampler_drain_completed = true;
+      return dc->pending_packet_count;
     }
   }
 }
