@@ -157,6 +157,7 @@ final class EncodedEosDecoder
     pendingStepQueued = false;
     inputOutstanding = false;
     eosQueued = false;
+    delegate.invalidatePendingEncodedPackets();
     delegate.flush();
   }
 
