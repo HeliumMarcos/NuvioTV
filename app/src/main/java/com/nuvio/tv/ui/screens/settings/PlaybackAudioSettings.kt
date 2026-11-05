@@ -131,13 +131,15 @@ internal fun PlaybackAudioSection(
         )
         SettingsSectionLabel(text = stringResource(R.string.audio_transcoding_inputs))
         SettingsNote(text = stringResource(R.string.audio_transcoding_inputs_sub))
-        listOf(1 to "TrueHD", 2 to "DTS", 4 to "DTS-HD").forEach { (flag, label) ->
+        val inputFormats = listOf(1 to "TrueHD", 2 to "DTS", 4 to "DTS-HD") +
+            if (settings.preferEac3Transcoding) emptyList() else listOf(8 to "DDP (E-AC-3)")
+        inputFormats.forEach { (flag, label) ->
             SettingsToggleRow(
                 title = label,
                 subtitle = null,
                 checked = settings.transcodingInputMask and flag != 0,
                 enabled = enabled && settings.forceOpticalPassthrough && settings.decoderPriority != 0,
-                onToggle = { onUpdate { setTranscodingInputEnabled(flag, settings.transcodingInputMask and flag == 0) } }
+                onToggle = { onUpdate { setTranscodingInputEnabled(settings.preferEac3Transcoding, flag, settings.transcodingInputMask and flag == 0) } }
             )
         }
     }

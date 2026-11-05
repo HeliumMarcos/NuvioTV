@@ -312,7 +312,8 @@ data class PlayerSettings(
     val tunnelingEnabled: Boolean = false,
     val forceOpticalPassthrough: Boolean = false,
     val preferEac3Transcoding: Boolean = false,
-    val transcodingInputMask: Int = 7, // TrueHD=1, DTS=2, DTS-HD=4; AAC is never selected
+    val ac3TranscodingInputMask: Int = 15, // TrueHD=1, DTS=2, DTS-HD=4, DDP=8
+    val eac3TranscodingInputMask: Int = 7,
     val skipSilence: Boolean = false,
     val nightMode: NightMode = NightMode.OFF,
     val audioAmplificationDb: Int = 0,
@@ -403,6 +404,9 @@ data class PlayerSettings(
      * Tunneled playback cannot share the FFmpeg audio path. Prefer-app decoder
      * (required for downmix) plus tunneling races at startup and playback never begins.
      */
+    val transcodingInputMask: Int
+        get() = if (preferEac3Transcoding) eac3TranscodingInputMask else ac3TranscodingInputMask
+
     val isTunnelingCompatible: Boolean
         get() = !isPreferAppDecoder && !(forceOpticalPassthrough && decoderPriority != 0)
 
@@ -638,7 +642,8 @@ class PlayerSettingsDataStore @Inject constructor(
     private val downmixNormalizationEnabledLegacyKey =
         booleanPreferencesKey("downmix_normalization_enabled")
     private val tunnelingEnabledKey = booleanPreferencesKey("tunneling_enabled")
-    private val transcodingInputMaskKey = intPreferencesKey("transcoding_input_mask")
+    private val ac3TranscodingInputMaskKey = intPreferencesKey("ac3_transcoding_input_mask")
+    private val eac3TranscodingInputMaskKey = intPreferencesKey("eac3_transcoding_input_mask")
     private val preferEac3TranscodingKey = booleanPreferencesKey("prefer_eac3_transcoding")
     private val forceOpticalPassthroughKey = booleanPreferencesKey("force_optical_passthrough")
     private val skipSilenceKey = booleanPreferencesKey("skip_silence")
@@ -1028,7 +1033,8 @@ class PlayerSettingsDataStore @Inject constructor(
                 tunnelingEnabled = prefs[tunnelingEnabledKey] ?: false,
                 forceOpticalPassthrough = prefs[forceOpticalPassthroughKey] ?: false,
                 preferEac3Transcoding = prefs[preferEac3TranscodingKey] ?: false,
-                transcodingInputMask = (prefs[transcodingInputMaskKey] ?: 7) and 7,
+                ac3TranscodingInputMask = (prefs[ac3TranscodingInputMaskKey] ?: 15) and 15,
+                eac3TranscodingInputMask = (prefs[eac3TranscodingInputMaskKey] ?: 7) and 7,
                 skipSilence = prefs[skipSilenceKey] ?: false,
                 nightMode = NightMode.fromSettingValue(prefs[nightModeKey]),
                 audioAmplificationDb = (prefs[audioAmplificationDbKey] ?: 0).coerceIn(
@@ -1292,11 +1298,13 @@ class PlayerSettingsDataStore @Inject constructor(
         }
     }
 
-    suspend fun setTranscodingInputEnabled(flag: Int, enabled: Boolean) {
-        require(flag == 1 || flag == 2 || flag == 4)
+    suspend fun setTranscodingInputEnabled(eac3Target: Boolean, flag: Int, enabled: Boolean) {
+        require(flag == 1 || flag == 2 || flag == 4 || (!eac3Target && flag == 8))
         store().edit { prefs ->
-            val current = prefs[transcodingInputMaskKey] ?: 7
-            prefs[transcodingInputMaskKey] = (if (enabled) current or flag else current and flag.inv()) and 7
+            val key = if (eac3Target) eac3TranscodingInputMaskKey else ac3TranscodingInputMaskKey
+            val allowed = if (eac3Target) 7 else 15
+            val current = prefs[key] ?: allowed
+            prefs[key] = (if (enabled) current or flag else current and flag.inv()) and allowed
         }
     }
 

@@ -142,13 +142,8 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
     if (forceOpticalPassthrough && MimeTypes.AUDIO_AC3.equals(mimeType)) {
       return C.FORMAT_UNSUPPORTED_SUBTYPE;
     }
-    boolean isDtsOrTrueHd = MimeTypes.AUDIO_DTS.equals(mimeType)
-        || MimeTypes.AUDIO_DTS_HD.equals(mimeType)
-        || MimeTypes.AUDIO_TRUEHD.equals(mimeType);
-    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(mimeType, transcodingInputMask) &&
-        !MimeTypes.AUDIO_AC3.equals(mimeType) &&
-        !MimeTypes.AUDIO_E_AC3.equals(mimeType) &&
-        (format.channelCount > 2 || format.channelCount <= 0 || isDtsOrTrueHd);
+    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(mimeType, preferEac3Transcoding ? transcodingInputMask & 7 : transcodingInputMask) &&
+        !MimeTypes.AUDIO_AC3.equals(mimeType);
 
     if (!transcodeToAc3 && (format.channelCount <= 0 || format.sampleRate <= 0)) {
       return format.cryptoType == C.CRYPTO_TYPE_NONE
@@ -202,9 +197,6 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
       throws FfmpegDecoderException {
     TraceUtil.beginSection("createFfmpegAudioDecoder");
     String mimeType = checkNotNull(format.sampleMimeType);
-    boolean isDtsOrTrueHd = MimeTypes.AUDIO_DTS.equals(mimeType)
-        || MimeTypes.AUDIO_DTS_HD.equals(mimeType)
-        || MimeTypes.AUDIO_TRUEHD.equals(mimeType);
     // Do not select a compressed output format that the actual sink rejects.
     // Keep PCM decoding available as the compatibility fallback.
     boolean ac3Supported = sinkSupportsFormat(
@@ -219,11 +211,9 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
             .setChannelCount(6)
             .setSampleRate(48000)
             .build());
-    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(mimeType, transcodingInputMask) &&
+    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(mimeType, preferEac3Transcoding ? transcodingInputMask & 7 : transcodingInputMask) &&
         (ac3Supported || eac3Supported) &&
-        !MimeTypes.AUDIO_AC3.equals(mimeType) &&
-        !MimeTypes.AUDIO_E_AC3.equals(mimeType) &&
-        (format.channelCount > 2 || format.channelCount <= 0 || isDtsOrTrueHd);
+        !MimeTypes.AUDIO_AC3.equals(mimeType);
     int initialInputBufferSize =
         format.maxInputSize != Format.NO_VALUE ? format.maxInputSize : DEFAULT_INPUT_BUFFER_SIZE;
     @C.PcmEncoding int outputEncoding;
@@ -332,13 +322,14 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
    * Set before preparing playback so format negotiation and decoder agree.
    */
   public void setTranscodingInputMask(int mask) {
-    transcodingInputMask = mask & 7;
+    transcodingInputMask = mask & 15;
   }
 
   private static boolean isTranscodingInputSelected(String mimeType, int mask) {
     int flag = MimeTypes.AUDIO_TRUEHD.equals(mimeType) ? 1
         : MimeTypes.AUDIO_DTS.equals(mimeType) ? 2
-        : MimeTypes.AUDIO_DTS_HD.equals(mimeType) ? 4 : 0;
+        : MimeTypes.AUDIO_DTS_HD.equals(mimeType) ? 4
+        : (MimeTypes.AUDIO_E_AC3.equals(mimeType) || MimeTypes.AUDIO_E_AC3_JOC.equals(mimeType)) ? 8 : 0;
     return (mask & flag) != 0;
   }
 

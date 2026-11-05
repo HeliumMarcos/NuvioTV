@@ -1,5 +1,6 @@
 package com.nuvio.tv.data.local
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,8 +48,19 @@ class PlayerSettingsTranscodingTest {
         assertFalse(selected("audio/vnd.dts.hd", 2))
         assertTrue(selected("audio/vnd.dts.hd", 4))
         assertFalse(selected("audio/vnd.dts", 4))
+        assertTrue(selected("audio/eac3", 8))
+        assertTrue(selected("audio/eac3-joc", 8))
+        assertFalse(selected("audio/eac3", 7))
+        assertFalse(selected("audio/mp4a-latm", 15))
         assertFalse(selected("audio/mp4a-latm", 7))
         assertFalse(selected("audio/ac3", 7))
         assertFalse(selected("audio/true-hd", 0))
+    }
+    @Test
+    fun `destination selections remain independent when switching output`() {
+        val settings = PlayerSettings(ac3TranscodingInputMask = 8, eac3TranscodingInputMask = 1)
+        assertEquals(8, settings.transcodingInputMask)
+        assertEquals(1, settings.copy(preferEac3Transcoding = true).transcodingInputMask)
+        assertEquals(8, settings.copy(preferEac3Transcoding = true).copy(preferEac3Transcoding = false).transcodingInputMask)
     }
 }
