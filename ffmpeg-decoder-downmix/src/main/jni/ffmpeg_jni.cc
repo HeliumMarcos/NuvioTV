@@ -509,9 +509,11 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
       LOGE("Invalid delayed resampler sample count: %d", capacity);
       return AUDIO_DECODER_ERROR_OTHER;
     }
+    // Even if the resampler reports no delayed samples, a full encoder
+    // frame may still be retained in the FIFO after send_frame(EAGAIN).
+    // Run the zero-input conversion and FIFO encoding pass before EOF.
     if (capacity == 0) {
-      dc->resampler_drain_completed = true;
-      return dc->pending_packet_count;
+      capacity = 1;
     }
     // Bound each drain allocation to avoid allocating a potentially huge
     // planar buffer when FFmpeg reports a large delayed-sample upper bound.
