@@ -553,16 +553,22 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
     while (av_audio_fifo_size(dc->fifo) >= frameSize) {
       ret = av_frame_make_writable(dc->encoder_frame);
       if (ret < 0 ||
-          av_audio_fifo_read(dc->fifo, (void**)dc->encoder_frame->data,
+          av_audio_fifo_peek(dc->fifo, (void**)dc->encoder_frame->data,
                              frameSize) != frameSize) {
         return AUDIO_DECODER_ERROR_OTHER;
       }
       dc->encoder_frame->pts = dc->next_encoder_pts;
       ret = avcodec_send_frame(dc->encoder_context, dc->encoder_frame);
+      if (ret == AVERROR(EAGAIN)) {
+        // Keep the FIFO frame intact. The caller can retry after the
+        // scheduler consumes packets and the encoder has made progress.
+        return dc->pending_packet_count;
+      }
       if (ret < 0) {
         logError("avcodec_send_frame (resampler drain)", ret);
         return AUDIO_DECODER_ERROR_OTHER;
       }
+      av_audio_fifo_drain(dc->fifo, frameSize);
       dc->next_encoder_pts += frameSize;
       for (;;) {
         ret = avcodec_receive_packet(dc->encoder_context, dc->encoder_packet);
