@@ -132,6 +132,7 @@ struct DecoderContext {
   bool encoder_initialized;
   // Terminal encoder drain must be requested at most once per context.
   bool encoder_flush_started;
+  bool decoder_drain_started;
   // Presentation timestamp of the next encoded frame, in output samples.
   int64_t next_encoder_pts;
   // First packet PTS emitted by the most recent decodePacket call.
@@ -410,6 +411,35 @@ AUDIO_DECODER_FUNC(jint, ffmpegDequeueEncodedPacket, jlong context,
   return dequeueEncodedPacket(
       decoderContext, outputBuffer, outputSize,
       GrowOutputBufferCallback{env, thiz, decoderOutputBuffer});
+}
+
+// Decode delayed frames after compressed input EOS. The existing decodePacket
+// pipeline resamples and encodes frames returned by avcodec_receive_frame.
+// It does not flush delayed SwrContext samples; that is a separate stage.
+AUDIO_DECODER_FUNC(jint, ffmpegDrainDecoder, jlong context,
+                   jobject decoderOutputBuffer, jobject outputData,
+                   jint outputSize, jint userCenterMixLevelDb,
+                   jboolean downmixNormalizationEnabled, jfloat lfeMixLevel) {
+  if (!context || !decoderOutputBuffer || !outputData || outputSize < 0) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  DecoderContext* decoderContext = (DecoderContext*)context;
+  if (decoderContext->transcoding_mode == 0 ||
+      decoderContext->encoder_flush_started) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  uint8_t* outputBuffer = (uint8_t*)env->GetDirectBufferAddress(outputData);
+  if (!outputBuffer || outputSize > env->GetDirectBufferCapacity(outputData)) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  decoderContext->last_output_pts = AV_NOPTS_VALUE;
+  decoderContext->last_output_packet_count = 0;
+  // Null input signals EOS to libavcodec; repeated calls are safe after EOF.
+  decoderContext->decoder_drain_started = true;
+  return decodePacket(decoderContext, nullptr, outputBuffer, outputSize,
+                      userCenterMixLevelDb, downmixNormalizationEnabled,
+                      lfeMixLevel,
+                      GrowOutputBufferCallback{env, thiz, decoderOutputBuffer});
 }
 
 // Flush the encoder after upstream decoder and resampler have been drained.
@@ -715,6 +745,10 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                  GrowOutputBufferCallback growBuffer) {
   AVCodecContext* codecContext = decoderContext->codec_context;
   int result = avcodec_send_packet(codecContext, packet);
+  if (result == AVERROR_EOF && packet == nullptr) {
+    // The decoder has already accepted EOS; its output was drained.
+    result = 0;
+  }
   if (result) {
     logError("avcodec_send_packet", result);
     return transformError(result);
@@ -730,7 +764,8 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
     result = avcodec_receive_frame(codecContext, frame);
     if (result) {
       av_frame_free(&frame);
-      if (result == AVERROR(EAGAIN)) {
+      if (result == AVERROR(EAGAIN) ||
+          (result == AVERROR_EOF && packet == nullptr)) {
         break;
       }
       logError("avcodec_receive_frame", result);
@@ -1243,6 +1278,7 @@ void clearResampler(DecoderContext* decoderContext) {
   decoderContext->pending_packet_count = 0;
   decoderContext->encoder_initialized = false;
   decoderContext->encoder_flush_started = false;
+  decoderContext->decoder_drain_started = false;
   decoderContext->next_encoder_pts = 0;
   decoderContext->last_output_pts = AV_NOPTS_VALUE;
   decoderContext->last_output_packet_count = 0;
