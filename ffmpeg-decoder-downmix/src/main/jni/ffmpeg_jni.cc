@@ -134,6 +134,8 @@ struct DecoderContext {
   bool encoder_initialized;
   // Terminal encoder drain must be requested at most once per context.
   bool encoder_flush_started;
+  // Final partial FIFO frame may have been accepted before EOF submission.
+  bool encoder_final_frame_submitted;
   bool decoder_drain_started;
   bool decoder_drain_completed;
   bool resampler_drain_completed;
@@ -641,7 +643,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
     LOGE("Invalid encoder FIFO state during flush.");
     return AUDIO_DECODER_ERROR_OTHER;
   }
-  if (remaining > 0) {
+  if (remaining > 0 && !decoderContext->encoder_final_frame_submitted) {
     int ret = av_frame_make_writable(decoderContext->encoder_frame);
     if (ret < 0) {
       logError("av_frame_make_writable (flush)", ret);
@@ -670,6 +672,7 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
       return AUDIO_DECODER_ERROR_OTHER;
     }
     decoderContext->next_encoder_pts += frameSize;
+    decoderContext->encoder_final_frame_submitted = true;
   }
   int ret = avcodec_send_frame(decoderContext->encoder_context, nullptr);
   if (ret >= 0 || ret == AVERROR_EOF) {
@@ -1460,6 +1463,7 @@ void clearResampler(DecoderContext* decoderContext) {
   decoderContext->pending_packet_count = 0;
   decoderContext->encoder_initialized = false;
   decoderContext->encoder_flush_started = false;
+  decoderContext->encoder_final_frame_submitted = false;
   decoderContext->decoder_drain_started = false;
   decoderContext->decoder_drain_completed = false;
   decoderContext->resampler_drain_completed = false;
