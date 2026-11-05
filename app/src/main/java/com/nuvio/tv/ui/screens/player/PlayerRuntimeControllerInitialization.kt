@@ -2690,7 +2690,8 @@ private fun buildStableAudioCapabilities(context: Context, forceOpticalPassthrou
     val supportedEncodings = mutableListOf<Int>()
     val knownEncodings = intArrayOf(
         C.ENCODING_PCM_16BIT, C.ENCODING_AC3, C.ENCODING_AC4, C.ENCODING_DTS,
-        C.ENCODING_E_AC3_JOC, C.ENCODING_E_AC3, C.ENCODING_DOLBY_TRUEHD
+        C.ENCODING_E_AC3_JOC, C.ENCODING_E_AC3, C.ENCODING_DOLBY_TRUEHD,
+        C.ENCODING_DTS_HD, C.ENCODING_DTS_UHD_P2
     )
     for (encoding in knownEncodings) {
         if (detected.supportsEncoding(encoding)) {
@@ -2700,27 +2701,10 @@ private fun buildStableAudioCapabilities(context: Context, forceOpticalPassthrou
     if ((detected.supportsEncoding(C.ENCODING_DTS_HD) || detected.supportsEncoding(C.ENCODING_DTS_UHD_P2)) && C.ENCODING_DTS !in supportedEncodings) {
         supportedEncodings += C.ENCODING_DTS
     }
-    if (forceOpticalPassthrough) {
-        val forced = intArrayOf(
-            C.ENCODING_AC3,
-            C.ENCODING_E_AC3,
-            C.ENCODING_E_AC3_JOC,
-            C.ENCODING_DTS,
-            C.ENCODING_DTS_HD
-        )
-        for (encoding in forced) {
-            // Experimental E-AC-3 must be reported by the real output, never fabricated.
-            if (preferEac3Transcoding && (encoding == C.ENCODING_E_AC3 || encoding == C.ENCODING_E_AC3_JOC)) continue
-            if (encoding !in supportedEncodings) {
-                supportedEncodings += encoding
-            }
-        }
-    }
-    val maxChannelCount = if (forceOpticalPassthrough) {
-        maxOf(detected.maxChannelCount, 8)
-    } else {
-        detected.maxChannelCount
-    }
+    // Never fabricate compressed HDMI support. Advertising unsupported encodings
+    // makes Media3 select a passthrough/transcode path that AudioTrack cannot open.
+    // Use the actual connected route's capabilities, including its channel limit.
+    val maxChannelCount = detected.maxChannelCount
     return AudioCapabilities(supportedEncodings.toIntArray(), maxChannelCount)
 }
 
