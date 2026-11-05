@@ -625,6 +625,13 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
           }
 
           int packetSize = decoderContext->encoder_packet->size;
+          // Guard the signed JNI buffer size before computing the required
+          // capacity. Encoded packets can be produced in batches.
+          if (packetSize < 0 || packetSize > INT_MAX - outSize) {
+            LOGE("Invalid encoded audio packet size: %d", packetSize);
+            av_packet_unref(decoderContext->encoder_packet);
+            return AUDIO_DECODER_ERROR_OTHER;
+          }
           if (outSize + packetSize > outputSize) {
             outputSize = outSize + packetSize;
             uint8_t* newBase = growBuffer(outputSize);
