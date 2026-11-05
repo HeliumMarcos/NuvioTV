@@ -518,11 +518,17 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
     if (decoderContext->transcoding_mode != 0) {
       int outSamples = swr_get_out_samples(decoderContext->resample_context, frame->nb_samples);
       int nb_channels = decoderContext->output_layout.nb_channels;
-      if (outSamples <= 0 || nb_channels <= 0) {
-        LOGE("Invalid AC3 resampler dimensions: samples=%d channels=%d",
+      if (outSamples < 0 || nb_channels <= 0) {
+        LOGE("Invalid AC3/EAC3 resampler dimensions: samples=%d channels=%d",
              outSamples, nb_channels);
         av_frame_free(&frame);
         return AUDIO_DECODER_ERROR_OTHER;
+      }
+      // A resampler may temporarily produce no samples. This is not a
+      // decoding failure, especially during rate conversion.
+      if (outSamples == 0) {
+        av_frame_free(&frame);
+        continue;
       }
       uint8_t** converted_data = (uint8_t**)calloc(nb_channels, sizeof(uint8_t*));
       if (!converted_data) {
