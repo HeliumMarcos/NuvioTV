@@ -92,7 +92,8 @@ import java.util.List;
             outputChannelCount,
             requestedOutputLayoutName,
             outputEncoding == C.ENCODING_PCM_FLOAT,
-            outputEncoding == C.ENCODING_AC3);
+            outputEncoding == C.ENCODING_E_AC3 ? 2
+                : outputEncoding == C.ENCODING_AC3 ? 1 : 0);
     if (nativeContext == 0) {
       throw new FfmpegDecoderException("Initialization failed.");
     }
@@ -348,7 +349,7 @@ import java.util.List;
       int outputChannelCount,
       @Nullable String requestedOutputLayoutName,
       boolean outputFloat,
-      boolean transcodeToAc3);
+      int transcodingMode);
 
   private native int ffmpegDecode(
       long context,
