@@ -489,6 +489,13 @@ import java.util.List;
 
   private native int ffmpegDrainResampler(long context);
 
+  // A zero packet count is not evidence that SwrContext has finished.
+  boolean isResamplerDrainComplete() {
+    return ffmpegIsResamplerDrainComplete(nativeContext);
+  }
+
+  private native boolean ffmpegIsResamplerDrainComplete(long context);
+
   // Only call after the upstream FFmpeg decoder and resampler are drained.
   // Returns the number of queued encoded packets, or a negative error.
   int flushEncodedFramesAfterUpstreamDrain() throws FfmpegDecoderException {
