@@ -142,6 +142,7 @@ private fun PlayerRuntimeController.disposeExoPlayerBeforeRebuild() {
     }
     _exoPlayer = null
     playbackSpeedAwareAudioSink = null
+    debugAudioTrackConfig = null
 }
 
 /**
@@ -1848,6 +1849,21 @@ internal fun PlayerRuntimeController.initializePlayer(
                             format = format,
                             reuseEvaluation = decoderReuseEvaluation
                         )
+                    }
+
+                    override fun onAudioTrackInitialized(
+                        eventTime: AnalyticsListener.EventTime,
+                        audioTrackConfig: AudioSink.AudioTrackConfig
+                    ) {
+                        debugAudioTrackConfig = audioTrackConfig
+                    }
+
+                    override fun onAudioTrackReleased(
+                        eventTime: AnalyticsListener.EventTime,
+                        audioTrackConfig: AudioSink.AudioTrackConfig
+                    ) {
+                        // A delayed release for the previous track must not erase the replacement.
+                        if (debugAudioTrackConfig === audioTrackConfig) debugAudioTrackConfig = null
                     }
 
                     override fun onAudioUnderrun(

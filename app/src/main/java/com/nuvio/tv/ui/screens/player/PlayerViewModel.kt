@@ -226,6 +226,13 @@ class PlayerViewModel @Inject constructor(
     fun getCurrentFileSizeBytes(): Long? = controller.currentVideoSize
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    internal fun getDebugAudioTrackConfig() = controller.debugAudioTrackConfig
+
+    internal fun getDebugAudioRouteLabel(): String? = controller.currentAudioOutputRoute?.let {
+        "${it.label} (${it.key.substringBefore('|').removePrefix("type:")})"
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun getPlayerNativeMemoryBytes(): Long? {
         val allocator = controller._loadControl?.allocator as? androidx.media3.exoplayer.upstream.DefaultAllocator ?: return null
         return allocator.totalBytesAllocated.toLong().coerceAtLeast(0L)

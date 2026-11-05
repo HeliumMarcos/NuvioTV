@@ -73,6 +73,7 @@ jobs:
         run: |
           ./gradlew :app:assembleFullDebug :app:testFullDebugUnitTest \
             --tests com.nuvio.tv.data.local.PlayerSettingsTranscodingTest \
+            --tests com.nuvio.tv.ui.screens.player.DebugAudioFormatTest \
             -PuseLocalFfmpegDecoder=true \
             -Pandroid.injected.testOnly=false \
             -Pandroid.injected.build.abi=armeabi-v7a \

@@ -67,7 +67,10 @@ internal data class PlayerSnapshot(
     val durationMs: Long,
     val droppedFrames: Int,
     val fileSizeBytes: Long?,
-    val nativeMemoryBytes: Long? = null
+    val nativeMemoryBytes: Long? = null,
+    val inputAudioDescription: String? = null,
+    val outputAudioDescription: String? = null,
+    val audioRouteDescription: String? = null
 )
 
 @OptIn(UnstableApi::class)
@@ -112,7 +115,10 @@ internal fun PlayerDebugStatsOverlay(
                     durationMs = runCatching { it.duration }.getOrNull() ?: -1L,
                     droppedFrames = runCatching { it.videoDecoderCounters?.droppedBufferCount }.getOrNull() ?: 0,
                     fileSizeBytes = viewModel.getCurrentFileSizeBytes() ?: probedFileSize,
-                    nativeMemoryBytes = viewModel.getPlayerNativeMemoryBytes()
+                    nativeMemoryBytes = viewModel.getPlayerNativeMemoryBytes(),
+                    inputAudioDescription = DebugAudioFormat.describeInput(it.audioFormat),
+                    outputAudioDescription = viewModel.getDebugAudioTrackConfig()?.let(DebugAudioFormat::describeOutput),
+                    audioRouteDescription = viewModel.getDebugAudioRouteLabel()
                 )
             }
             stats = withContext(Dispatchers.IO) { sampler.sample(snapshot) }
@@ -198,6 +204,12 @@ private class DebugStatsSampler(context: Context) {
         add(bitrateStat(snapshot))
         add(networkStat())
         add(droppedStat(snapshot))
+        snapshot?.let {
+            add(DebugStat("audio in", it.inputAudioDescription ?: "--"))
+            // This is the initialized Android AudioTrack, not the source or a requested preference.
+            add(DebugStat("a.track", it.outputAudioDescription ?: "--"))
+            add(DebugStat("route", it.audioRouteDescription ?: "--"))
+        }
         addAll(thermalStats())
     }.filterNot { it.value == UNAVAILABLE }
 

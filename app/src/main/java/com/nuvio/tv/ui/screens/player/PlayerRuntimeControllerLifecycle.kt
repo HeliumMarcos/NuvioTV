@@ -118,6 +118,7 @@ internal fun PlayerRuntimeController.releasePlayer(
     ffmpegAudioRenderer = null
     updateAudioControlAvailability()
     playbackSpeedAwareAudioSink = null
+    debugAudioTrackConfig = null
     resetPlaybackTimeline()
     isReleasingPlayer = false
 }
