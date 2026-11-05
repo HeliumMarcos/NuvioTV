@@ -67,7 +67,6 @@ import java.util.List;
   // First input timestamp anchors native encoder-relative PTS to media time.
   private long encodedTimeAnchorUs = C.TIME_UNSET;
   // Accessed only by the decoder/output scheduler thread. Reset on seek.
-  private boolean encodedEndOfStreamFlushStarted;
   private boolean encodedEndOfStreamComplete;
 
   public FfmpegAudioDecoder(
@@ -140,7 +139,6 @@ import java.util.List;
       // Query the resulting output format again on the next non-empty buffer.
       hasOutputFormat = false;
       encodedTimeAnchorUs = C.TIME_UNSET;
-      encodedEndOfStreamFlushStarted = false;
       encodedEndOfStreamComplete = false;
     }
     if ((outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3)
@@ -437,7 +435,6 @@ import java.util.List;
     // after delivering queued packets to the renderer.
     if (!isEncoderFlushComplete()) {
       flushEncodedFramesAfterUpstreamDrain();
-      encodedEndOfStreamFlushStarted = true;
       return dequeuePendingEncodedPacket(outputBuffer);
     }
     if (dequeuePendingEncodedPacket(outputBuffer)) {
