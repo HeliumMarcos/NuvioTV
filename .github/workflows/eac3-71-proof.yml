@@ -1,0 +1,38 @@
+name: E-AC-3 7.1 encoder proof
+on:
+  push:
+    branches: [codex/eac3-7.1]
+    paths:
+      - 'experiments/eac3-7.1/**'
+      - '.github/workflows/eac3-71-proof.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prove-channels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned candidate base
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/FFmpeg/FFmpeg.git "$RUNNER_TEMP/ffmpeg-proof"
+          git -C "$RUNNER_TEMP/ffmpeg-proof" checkout c352a9ab022b945307f1ad5d35575f695a13c2ca
+          git -C "$RUNNER_TEMP/ffmpeg-proof" apply --check "$GITHUB_WORKSPACE/experiments/eac3-7.1/upstream-21668.patch"
+          git -C "$RUNNER_TEMP/ffmpeg-proof" apply "$GITHUB_WORKSPACE/experiments/eac3-7.1/upstream-21668.patch"
+      - name: Build isolated encoder and decoder
+        run: |
+          cd "$RUNNER_TEMP/ffmpeg-proof"
+          ./configure --disable-everything --disable-autodetect --disable-doc --disable-debug --disable-x86asm --enable-ffmpeg --enable-protocol=file --enable-demuxer=wav,eac3 --enable-muxer=wav,eac3 --enable-decoder=pcm_s16le,eac3 --enable-encoder=eac3,pcm_s16le --enable-parser=ac3 --enable-filter=aresample,anull,aformat --enable-swresample
+          make -j4
+          ./ffmpeg -hide_banner -h encoder=eac3
+      - name: Verify discrete 7.1 channels and 5.1 regression
+        run: python3 experiments/eac3-7.1/verify_channels.py "$RUNNER_TEMP/ffmpeg-proof/ffmpeg" "$RUNNER_TEMP/proof-results"
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eac3-71-proof
+          path: |
+            ${{ runner.temp }}/proof-results
+            ${{ runner.temp }}/ffmpeg-proof/ffbuild/config.log
