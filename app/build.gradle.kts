@@ -223,7 +223,13 @@ android {
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            // Experimental CI builds must not require the private release keystore.
+            // Keep the existing release signing behavior for normal local builds.
+            signingConfig = if (truthy(env("CI_USE_DEBUG_SIGNING"))) {
+                signingConfigs.getByName("debug")
+            } else {
+                signingConfigs.getByName("release")
+            }
             isDebuggable = parseBooleanProperty(providers.gradleProperty("debuggable").orNull)
             isMinifyEnabled = false
 
