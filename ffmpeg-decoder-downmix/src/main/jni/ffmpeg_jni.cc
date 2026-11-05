@@ -167,11 +167,6 @@ struct GrowOutputBufferCallback {
   jobject decoderOutputBuffer;
 };
 
-/**
- * Decodes the packet into the output buffer, returning the number of bytes
- * written, or a negative AUDIO_DECODER_ERROR constant value in the case of an
- * error.
- */
 // Pop exactly one compressed access unit. A failed allocation leaves the
 // packet in the queue so it can be retried or freed during decoder reset.
 int dequeueEncodedPacket(DecoderContext* context, uint8_t* outputBuffer,
@@ -208,6 +203,10 @@ int dequeueEncodedPacket(DecoderContext* context, uint8_t* outputBuffer,
   return packetSize;
 }
 
+/**
+ * Decodes an input packet and emits at most one compressed access unit.
+ * Returns bytes written or a negative AUDIO_DECODER_ERROR constant.
+ */
 int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                  uint8_t* outputBuffer, int outputSize,
                  jint userCenterMixLevelDb,
