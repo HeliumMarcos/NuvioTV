@@ -66,15 +66,27 @@ jobs:
             -PuseLocalFfmpegDecoder=true \
             -Pandroid.injected.build.abi=arm64-v8a \
             --stacktrace --no-daemon
-      - name: Verify debug APK outputs
+      - name: Collect and verify experimental full debug APK
         run: |
-          find app/build/outputs/apk -type f -name '*.apk' -print
-          test -n "$(find app/build/outputs/apk -type f -name '*.apk' -print -quit)"
+          set -euo pipefail
+          echo "Build outputs in workspace:"
+          find . -type f \( -name '*.apk' -o -name '*.aar' \) -print | head -100
+          mkdir -p "$RUNNER_TEMP/eac3-apk"
+          mapfile -d '' apks < <(find . -type f -name '*full*debug*.apk' -print0)
+          if (( ${#apks[@]} == 0 )); then
+            echo "::error::No full debug APK found. Inspect Gradle output layout."
+            find . -type d -name outputs -print | head -50
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            cp "$apk" "$RUNNER_TEMP/eac3-apk/"
+          done
+          ls -lh "$RUNNER_TEMP/eac3-apk"
       - name: Upload experimental debug APK
         uses: actions/upload-artifact@v4
         with:
           name: nuviotv-eac3-experimental-debug-apk
-          path: app/build/outputs/apk/**/*.apk
+          path: ${{ runner.temp }}/eac3-apk/*.apk
           if-no-files-found: error
       - name: Upload compiled decoder AAR
         uses: actions/upload-artifact@v4
