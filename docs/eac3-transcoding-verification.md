@@ -34,7 +34,7 @@ This branch is experimental. Do not merge into `dev` or distribute an APK as pro
 
 ## Known limitations
 
-- The opt-in E-AC-3 renderer setter is not yet connected to an application setting.
+- Local decoder builds expose an opt-in AC-3 / E-AC-3 format selector in playback audio settings. E-AC-3 remains disabled by default.
 - There is no tested runtime fallback if E-AC-3 encoding itself fails.
 - 7.1 E-AC-3 and Dolby Digital Plus Atmos/JOC are not implemented.
 - No APK build, automated test result, or device playback validation has been produced yet.
@@ -196,3 +196,22 @@ The terminal encoder flush now stops calling `avcodec_receive_packet` once the n
 The main TrueHD-to-AC-3/E-AC-3 encoding path now uses `av_audio_fifo_peek` instead of removing an entire 1,536-sample frame before `avcodec_send_frame`. It calls `av_audio_fifo_drain` only after successful encoder acceptance, matching the EOS and resampler-drain safety invariant. The existing main decode path still **fails fast on encoder `AVERROR(EAGAIN)`**; it does not yet perform a receive/retry loop there. Preserving the samples is necessary but not sufficient for uninterrupted playback under encoder backpressure. Test that scenario explicitly before release.
 
 The Java packet-count diagnostic now describes invalid native packet scheduling rather than incorrectly claiming the encoded packet queue is absent. Android/NDK compilation and TCL C7K playback tests remain pending.
+
+## Application setting integration
+
+Local decoder builds expose **Force audio transcoding** and **Transcoding output format**
+(AC-3 / experimental E-AC-3). The preference is persisted per profile locally and is
+not synced to other devices. Enable transcoding and select E-AC-3 before starting playback;
+stop and restart an existing playback session after changing it. The preference is applied
+while constructing renderers, before format negotiation, and reapplied on Bluetooth route
+changes. Bluetooth always disables compressed output. Forced transcoding also disables
+tunneling, including when the selected decoder preference is prefer-device.
+
+Experimental E-AC-3 capabilities must come from the detected output; force-optical no
+longer fabricates E-AC-3 support in this mode. The decoder falls back to AC-3 when the
+sink rejects E-AC-3, or PCM when neither compressed format is accepted. Encoder errors
+are still not covered by automatic runtime fallback. Look for `Transcoding selection`
+in logcat to distinguish requested E-AC-3 from the actual encoding chosen by the renderer.
+
+CI builds full ARMv7 debug APKs with testOnly disabled and runs the transcoding settings
+regression tests. Actual TrueHD playback and output encoding still require TV validation.

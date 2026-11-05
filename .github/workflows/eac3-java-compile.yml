@@ -62,8 +62,10 @@ jobs:
             --stacktrace --no-daemon
       - name: Assemble experimental NuvioTV debug APK
         run: |
-          ./gradlew :app:assembleDebug \
+          ./gradlew :app:assembleFullDebug :app:testFullDebugUnitTest \
+            --tests com.nuvio.tv.data.local.PlayerSettingsTranscodingTest \
             -PuseLocalFfmpegDecoder=true \
+            -Pandroid.injected.testOnly=false \
             -Pandroid.injected.build.abi=armeabi-v7a \
             --stacktrace --no-daemon
       - name: Collect and verify experimental full debug APK

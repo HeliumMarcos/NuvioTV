@@ -149,3 +149,7 @@
 
 -dontwarn java.beans.ConstructorProperties
 -dontwarn java.beans.Transient
+# Local experimental decoder is configured reflectively to keep stock AAR builds compatible.
+-keepclassmembers class androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer {
+    public void setPreferEac3Transcoding(boolean);
+}

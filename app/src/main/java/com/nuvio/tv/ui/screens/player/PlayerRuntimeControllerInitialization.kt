@@ -936,6 +936,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                 downmixLfeLevel = playerSettings.downmixLfeLevel.level,
                 forceOpticalPassthrough = isForcePassthroughActive,
+                preferEac3Transcoding = playerSettings.preferEac3Transcoding,
                 bluetoothForcePcm = isBluetoothAudioOutput,
                 playbackSpeedProvider = { _uiState.value.playbackSpeed },
                 initialForcePcm = hasTriedAudioPcmFallback || isBluetoothAudioOutput,
@@ -949,7 +950,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                         audioOutputChannels = effectiveAudioOutputChannels,
                         downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                         lfeMixLevel = playerSettings.downmixLfeLevel.level,
-                        forceOpticalPassthrough = isForcePassthroughActive
+                        forceOpticalPassthrough = isForcePassthroughActive,
+                        preferEac3Transcoding = playerSettings.preferEac3Transcoding
                     )
                     applyCenterMixLevel(_uiState.value.centerMixLevelDb)
                     updateAudioControlAvailability()
@@ -2181,6 +2183,7 @@ private class SubtitleOffsetRenderersFactory(
     private val downmixNormalizationEnabled: Boolean,
     private val downmixLfeLevel: Float,
     private val forceOpticalPassthrough: Boolean,
+    private val preferEac3Transcoding: Boolean,
     private val bluetoothForcePcm: Boolean = false,
     private val playbackSpeedProvider: () -> Float,
     private val initialForcePcm: Boolean = false,
@@ -2255,7 +2258,7 @@ private class SubtitleOffsetRenderersFactory(
             }
             forceOpticalPassthrough -> {
                 DefaultAudioSink.Builder(context)
-                    .setAudioCapabilities(buildStableAudioCapabilities(context, true))
+                    .setAudioCapabilities(buildStableAudioCapabilities(context, true, preferEac3Transcoding))
             }
             else -> DefaultAudioSink.Builder(context)
         }
@@ -2346,7 +2349,8 @@ private class SubtitleOffsetRenderersFactory(
                 audioOutputChannels = audioOutputChannels,
                 downmixNormalizationEnabled = downmixNormalizationEnabled,
                 lfeMixLevel = downmixLfeLevel,
-                forceOpticalPassthrough = forceOpticalPassthrough
+                forceOpticalPassthrough = forceOpticalPassthrough,
+                preferEac3Transcoding = preferEac3Transcoding
             )
         }
         onFfmpegAudioRendererChanged(ffmpegRenderers.firstOrNull())
@@ -2357,8 +2361,10 @@ private fun FfmpegAudioRenderer.applyDownmixSettings(
     audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
     downmixNormalizationEnabled: Boolean,
     lfeMixLevel: Float,
-    forceOpticalPassthrough: Boolean
+    forceOpticalPassthrough: Boolean,
+    preferEac3Transcoding: Boolean
 ) {
+    applyExperimentalEac3Preference(preferEac3Transcoding && forceOpticalPassthrough)
     setForceOpticalPassthrough(forceOpticalPassthrough)
     if (downmixEnabled) {
         setAudioOutputChannels(
@@ -2658,7 +2664,7 @@ private fun DefaultRenderersFactory.applyMapDv7ToHevcIfSupported(enabled: Boolea
     }.getOrElse { this }
 }
 
-private fun buildStableAudioCapabilities(context: Context, forceOpticalPassthrough: Boolean = false): AudioCapabilities {
+private fun buildStableAudioCapabilities(context: Context, forceOpticalPassthrough: Boolean = false, preferEac3Transcoding: Boolean = false): AudioCapabilities {
     val detected = AudioCapabilities.getCapabilities(context, AudioAttributes.DEFAULT, null)
     val supportedEncodings = mutableListOf<Int>()
     val knownEncodings = intArrayOf(
@@ -2682,6 +2688,8 @@ private fun buildStableAudioCapabilities(context: Context, forceOpticalPassthrou
             C.ENCODING_DTS_HD
         )
         for (encoding in forced) {
+            // Experimental E-AC-3 must be reported by the real output, never fabricated.
+            if (preferEac3Transcoding && (encoding == C.ENCODING_E_AC3 || encoding == C.ENCODING_E_AC3_JOC)) continue
             if (encoding !in supportedEncodings) {
                 supportedEncodings += encoding
             }

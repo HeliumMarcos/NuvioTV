@@ -31,6 +31,7 @@ import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.audio.AudioProcessor;
+import androidx.media3.common.util.Log;
 import androidx.media3.common.util.TraceUtil;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
@@ -240,6 +241,10 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
       nativeOutputChannelCount = shouldRequestDownmix ? outputChannelCount : 0;
       downmixActive = shouldRequestDownmix;
     }
+    Log.i(TAG, "Transcoding selection: input=" + mimeType
+        + ", requestedEac3=" + preferEac3Transcoding
+        + ", sinkEac3=" + eac3Supported
+        + ", outputEncoding=" + outputEncoding);
     FfmpegAudioDecoder decoder =
         new FfmpegAudioDecoder(
             format,

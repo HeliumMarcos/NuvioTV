@@ -3,6 +3,7 @@ package com.nuvio.tv.ui.screens.settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.R
 import com.nuvio.tv.data.local.AVAILABLE_SUBTITLE_LANGUAGES
 import com.nuvio.tv.data.local.AudioLanguageOption
@@ -114,12 +115,21 @@ internal fun PlaybackAudioSection(
         enabled = enabled && settings.isTunnelingCompatible
     )
     SettingsToggleRow(
-        title = stringResource(R.string.audio_force_optical_passthrough),
-        subtitle = stringResource(R.string.audio_force_optical_passthrough_sub),
+        title = stringResource(if (BuildConfig.LOCAL_FFMPEG_DECODER_ENABLED) R.string.audio_force_transcoding else R.string.audio_force_optical_passthrough),
+        subtitle = stringResource(if (BuildConfig.LOCAL_FFMPEG_DECODER_ENABLED) R.string.audio_force_transcoding_sub else R.string.audio_force_optical_passthrough_sub),
         checked = settings.forceOpticalPassthrough && settings.decoderPriority != 0,
         onToggle = { onUpdate { setForceOpticalPassthrough(!settings.forceOpticalPassthrough) } },
         enabled = enabled && settings.decoderPriority != 0
     )
+    if (BuildConfig.LOCAL_FFMPEG_DECODER_ENABLED) {
+        SettingsActionRow(
+            title = stringResource(R.string.audio_transcoding_format),
+            subtitle = stringResource(R.string.audio_transcoding_format_sub),
+            value = stringResource(if (settings.preferEac3Transcoding) R.string.audio_transcoding_eac3 else R.string.audio_transcoding_ac3),
+            enabled = enabled && settings.forceOpticalPassthrough && settings.decoderPriority != 0,
+            onClick = { onOpenDialog(PlaybackDialog.TRANSCODING_FORMAT) }
+        )
+    }
 }
 
 @Composable
@@ -187,6 +197,22 @@ internal fun AudioSettingsDialogs(
                 onDismiss()
             },
             onDismiss = onDismiss
+        )
+        PlaybackDialog.TRANSCODING_FORMAT -> SettingsSingleChoiceDialog(
+            title = stringResource(R.string.audio_transcoding_format),
+            subtitle = stringResource(R.string.audio_transcoding_format_sub),
+            options = listOf(
+                SettingsPickerOption(false, stringResource(R.string.audio_transcoding_ac3)),
+                SettingsPickerOption(true, stringResource(R.string.audio_transcoding_eac3))
+            ),
+            selectedValue = settings.preferEac3Transcoding,
+            onOptionSelected = { preferEac3 ->
+                onUpdate { setPreferEac3Transcoding(preferEac3) }
+                onDismiss()
+            },
+            onDismiss = onDismiss,
+            width = 520.dp,
+            maxHeight = 420.dp
         )
         PlaybackDialog.AUDIO_OUTPUT_CHANNELS -> AudioOutputChannelsDialog(
             selectedChannels = settings.audioOutputChannels,

@@ -91,6 +91,7 @@ private val localOnlyPlayerProfileSettingsKeys = setOf(
     "downmix_normalization_enabled",
     "tunneling_enabled",
     "force_optical_passthrough",
+    "prefer_eac3_transcoding",
     "audio_amplification_db",
     "center_mix_level_db",
     "night_mode",

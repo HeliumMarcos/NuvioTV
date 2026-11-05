@@ -311,6 +311,7 @@ data class PlayerSettings(
     val downmixLfeLevel: DownmixLfeLevel = DownmixLfeLevel.OFF,
     val tunnelingEnabled: Boolean = false,
     val forceOpticalPassthrough: Boolean = false,
+    val preferEac3Transcoding: Boolean = false,
     val skipSilence: Boolean = false,
     val nightMode: NightMode = NightMode.OFF,
     val audioAmplificationDb: Int = 0,
@@ -402,7 +403,7 @@ data class PlayerSettings(
      * (required for downmix) plus tunneling races at startup and playback never begins.
      */
     val isTunnelingCompatible: Boolean
-        get() = !isPreferAppDecoder
+        get() = !isPreferAppDecoder && !(forceOpticalPassthrough && decoderPriority != 0)
 
     val effectiveTunnelingEnabled: Boolean
         get() = tunnelingEnabled && isTunnelingCompatible
@@ -636,6 +637,7 @@ class PlayerSettingsDataStore @Inject constructor(
     private val downmixNormalizationEnabledLegacyKey =
         booleanPreferencesKey("downmix_normalization_enabled")
     private val tunnelingEnabledKey = booleanPreferencesKey("tunneling_enabled")
+    private val preferEac3TranscodingKey = booleanPreferencesKey("prefer_eac3_transcoding")
     private val forceOpticalPassthroughKey = booleanPreferencesKey("force_optical_passthrough")
     private val skipSilenceKey = booleanPreferencesKey("skip_silence")
     private val nightModeKey = stringPreferencesKey("night_mode")
@@ -1023,6 +1025,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 downmixLfeLevel = DownmixLfeLevel.fromSettingValue(prefs[downmixLfeLevelKey]),
                 tunnelingEnabled = prefs[tunnelingEnabledKey] ?: false,
                 forceOpticalPassthrough = prefs[forceOpticalPassthroughKey] ?: false,
+                preferEac3Transcoding = prefs[preferEac3TranscodingKey] ?: false,
                 skipSilence = prefs[skipSilenceKey] ?: false,
                 nightMode = NightMode.fromSettingValue(prefs[nightModeKey]),
                 audioAmplificationDb = (prefs[audioAmplificationDbKey] ?: 0).coerceIn(
@@ -1283,6 +1286,12 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setForceOpticalPassthrough(enabled: Boolean) {
         store().edit { prefs ->
             prefs[forceOpticalPassthroughKey] = enabled
+        }
+    }
+
+    suspend fun setPreferEac3Transcoding(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[preferEac3TranscodingKey] = enabled
         }
     }
 
