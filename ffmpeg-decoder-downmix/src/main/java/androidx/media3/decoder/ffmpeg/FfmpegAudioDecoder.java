@@ -393,6 +393,16 @@ import java.util.List;
       boolean downmixNormalizationEnabled,
       float lfeMixLevel);
 
+  // For a future drain-capable output scheduler. SimpleDecoder cannot emit
+  // additional output buffers without another input, including at EOS.
+  private native int ffmpegGetPendingEncodedPacketCount(long context);
+
+  private native int ffmpegDequeueEncodedPacket(
+      long context,
+      SimpleDecoderOutputBuffer decoderOutputBuffer,
+      ByteBuffer outputData,
+      int outputSize);
+
   private native int ffmpegGetOutputPacketCount(long context);
 
   private native long ffmpegGetOutputTimeUs(long context);
