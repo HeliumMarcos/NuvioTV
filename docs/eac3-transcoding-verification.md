@@ -115,3 +115,18 @@ Native `ffmpegDrainDecoder()` now passes a null input packet to `decodePacket()`
 ### SwrContext delayed-sample drain (experimental)
 
 The JNI `ffmpegDrainResampler()` and Java `drainResamplerAfterDecoderEof()` are now available. After confirmed decoder EOF, the native routine repeatedly calls `swr_convert(..., nullptr, 0)`, writes produced planar-float samples to the encoder FIFO, encodes full frames and queues individual access units. It marks `resampler_drain_completed` when no more samples are produced; terminal encoder flush now requires both decoder and resampler completion. This path is **not wired into Media3 EOS**. The native loop, buffer sizing, delayed-sample accounting, and encoder behavior still require native compilation and tests, especially for sample-rate conversion and seeks. The Java drain calls must be sequenced by an output scheduler that can emit additional buffers; until then, this is not an end-to-end working feature.
+
+### Media3 EOS scheduling constraint — verified against upstream source
+
+The upstream AndroidX Media3 `SimpleDecoder.decode()` implementation handles EOS internally: for an EOS input it marks the output EOS without calling the subclass's `decode(input, output, reset)` method. Its `dequeueOutputBuffer()` and `queueInputBuffer()` methods are final, so overriding those methods in `FfmpegAudioDecoder` cannot inject additional encoded access units. Upstream `DecoderAudioRenderer.feedInputBuffer()` queues EOS directly, and `drainOutputBuffer()` handles the first EOS output as end-of-stream, rather than asking the decoder to flush FFmpeg.
+
+**Required integration design:** create a drain-aware implementation of Media3's `Decoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException>` interface for compressed transcoding, or a compatible independently owned decoding queue that can produce multiple outputs after the last input and before EOS. Keep the existing `SimpleDecoder` path for PCM decoding. The drain-aware implementation must:
+
+1. Decode all queued compressed inputs, retaining one complete AC-3/E-AC-3 access unit per output buffer.
+2. On EOS, call native decoder drain until `isDecoderDrainComplete()` is true, emitting each returned access unit.
+3. Call `drainResamplerAfterDecoderEof()` and check `isResamplerDrainComplete()`; emit queued access units, respecting the queue capacity.
+4. Call `flushEncodedFramesAfterUpstreamDrain()` once and dequeue all remaining access units.
+5. Only then enqueue a Media3 EOS output buffer; never send encoded output after EOS.
+6. On seek, flush, format change, release or decoder reinitialization, discard pending packets and reset all native drain flags and timestamps. Ensure the audio renderer cannot observe stale outputs from the previous generation.
+
+The new JNI/Java `isResamplerDrainComplete()` query is available to distinguish completion from a zero-packet result. This plan is not yet implemented. No build or device validation has been performed. Sources inspected: `androidx/media` upstream `libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java` and `libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio/DecoderAudioRenderer.java`.
