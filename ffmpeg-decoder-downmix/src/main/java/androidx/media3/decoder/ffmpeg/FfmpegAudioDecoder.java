@@ -395,6 +395,42 @@ import java.util.List;
 
   // For a future drain-capable output scheduler. SimpleDecoder cannot emit
   // additional output buffers without another input, including at EOS.
+  int getPendingEncodedPacketCount() {
+    return ffmpegGetPendingEncodedPacketCount(nativeContext);
+  }
+
+  // Called only after the output scheduler owns an unused output buffer.
+  // Returns true when one compressed access unit was copied into it.
+  boolean dequeuePendingEncodedPacket(SimpleDecoderOutputBuffer outputBuffer)
+      throws FfmpegDecoderException {
+    if (outputEncoding != C.ENCODING_AC3 && outputEncoding != C.ENCODING_E_AC3) {
+      return false;
+    }
+    if (getPendingEncodedPacketCount() == 0) {
+      return false;
+    }
+    ByteBuffer data = outputBuffer.init(
+        encodedTimeAnchorUs == C.TIME_UNSET ? 0 : encodedTimeAnchorUs, outputBufferSize);
+    int size = ffmpegDequeueEncodedPacket(nativeContext, outputBuffer, data, outputBufferSize);
+    if (size < 0) {
+      throw new FfmpegDecoderException("Failed to dequeue encoded access unit.");
+    }
+    if (size == 0) {
+      return false;
+    }
+    data = checkNotNull(outputBuffer.data);
+    data.position(0);
+    data.limit(size);
+    long packetTimeUs = ffmpegGetOutputTimeUs(nativeContext);
+    if (packetTimeUs != Long.MIN_VALUE && encodedTimeAnchorUs != C.TIME_UNSET
+        && ((packetTimeUs > 0 && encodedTimeAnchorUs <= Long.MAX_VALUE - packetTimeUs)
+            || (packetTimeUs < 0 && encodedTimeAnchorUs >= Long.MIN_VALUE - packetTimeUs)
+            || packetTimeUs == 0)) {
+      outputBuffer.timeUs = encodedTimeAnchorUs + packetTimeUs;
+    }
+    return true;
+  }
+
   private native int ffmpegGetPendingEncodedPacketCount(long context);
 
   private native int ffmpegDequeueEncodedPacket(
