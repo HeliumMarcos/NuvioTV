@@ -35,4 +35,20 @@ class PlayerSettingsTranscodingTest {
         )
         assertTrue(settings.effectiveTunnelingEnabled)
     }
+    @Test
+    fun `input selection treats DTS and DTS HD independently and excludes AAC`() {
+        val renderer = Class.forName("androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer")
+        val method = renderer.getDeclaredMethod("isTranscodingInputSelected", String::class.java, Int::class.javaPrimitiveType)
+        method.isAccessible = true
+        fun selected(mime: String, mask: Int) = method.invoke(null, mime, mask) as Boolean
+        assertTrue(selected("audio/true-hd", 1))
+        assertFalse(selected("audio/true-hd", 6))
+        assertTrue(selected("audio/vnd.dts", 2))
+        assertFalse(selected("audio/vnd.dts.hd", 2))
+        assertTrue(selected("audio/vnd.dts.hd", 4))
+        assertFalse(selected("audio/vnd.dts", 4))
+        assertFalse(selected("audio/mp4a-latm", 7))
+        assertFalse(selected("audio/ac3", 7))
+        assertFalse(selected("audio/true-hd", 0))
+    }
 }

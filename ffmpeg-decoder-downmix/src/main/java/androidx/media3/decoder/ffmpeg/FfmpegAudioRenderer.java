@@ -68,6 +68,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
   private volatile boolean forceOpticalPassthrough;
   // Experimental; disabled by default until the native E-AC-3 build is validated.
   private volatile boolean preferEac3Transcoding;
+  private volatile int transcodingInputMask = 7;
 
   public FfmpegAudioRenderer() {
     this(/* eventHandler= */ null, /* eventListener= */ null);
@@ -144,7 +145,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
     boolean isDtsOrTrueHd = MimeTypes.AUDIO_DTS.equals(mimeType)
         || MimeTypes.AUDIO_DTS_HD.equals(mimeType)
         || MimeTypes.AUDIO_TRUEHD.equals(mimeType);
-    boolean transcodeToAc3 = forceOpticalPassthrough &&
+    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(mimeType, transcodingInputMask) &&
         !MimeTypes.AUDIO_AC3.equals(mimeType) &&
         !MimeTypes.AUDIO_E_AC3.equals(mimeType) &&
         (format.channelCount > 2 || format.channelCount <= 0 || isDtsOrTrueHd);
@@ -218,7 +219,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
             .setChannelCount(6)
             .setSampleRate(48000)
             .build());
-    boolean transcodeToAc3 = forceOpticalPassthrough &&
+    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(mimeType, transcodingInputMask) &&
         (ac3Supported || eac3Supported) &&
         !MimeTypes.AUDIO_AC3.equals(mimeType) &&
         !MimeTypes.AUDIO_E_AC3.equals(mimeType) &&
@@ -330,6 +331,17 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
    * Disabled by default; the existing AC-3 path remains the fallback.
    * Set before preparing playback so format negotiation and decoder agree.
    */
+  public void setTranscodingInputMask(int mask) {
+    transcodingInputMask = mask & 7;
+  }
+
+  private static boolean isTranscodingInputSelected(String mimeType, int mask) {
+    int flag = MimeTypes.AUDIO_TRUEHD.equals(mimeType) ? 1
+        : MimeTypes.AUDIO_DTS.equals(mimeType) ? 2
+        : MimeTypes.AUDIO_DTS_HD.equals(mimeType) ? 4 : 0;
+    return (mask & flag) != 0;
+  }
+
   public void setPreferEac3Transcoding(boolean enabled) {
     this.preferEac3Transcoding = enabled;
   }

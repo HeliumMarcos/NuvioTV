@@ -206,10 +206,10 @@ private class DebugStatsSampler(context: Context) {
         add(networkStat())
         add(droppedStat(snapshot))
         snapshot?.let {
-            add(DebugStat("audio in", it.inputAudioDescription ?: "--"))
+            add(DebugStat("Entrada", it.inputAudioDescription ?: "--"))
             // This is the initialized Android AudioTrack, not the source or a requested preference.
-            add(DebugStat("a.track", it.outputAudioDescription ?: "--"))
-            add(DebugStat("route", it.audioRouteDescription ?: "--"))
+            add(DebugStat("Saída", it.outputAudioDescription ?: "--"))
+            add(DebugStat("Rota", it.audioRouteDescription ?: "--"))
         }
         addAll(thermalStats())
     }.filterNot { it.value == UNAVAILABLE }

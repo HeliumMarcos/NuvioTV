@@ -92,6 +92,7 @@ private val localOnlyPlayerProfileSettingsKeys = setOf(
     "tunneling_enabled",
     "force_optical_passthrough",
     "prefer_eac3_transcoding",
+    "transcoding_input_mask",
     "audio_amplification_db",
     "center_mix_level_db",
     "night_mode",

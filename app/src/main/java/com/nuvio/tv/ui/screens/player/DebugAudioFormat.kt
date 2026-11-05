@@ -11,7 +11,8 @@ import java.util.Locale
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal object DebugAudioFormat {
     fun describeInput(format: Format?): String? = format?.let {
-        describe(codecName(it.sampleMimeType), it.channelCount, it.sampleRate)
+        describe(codecName(it.sampleMimeType), it.channelCount, it.sampleRate,
+            hasLfe = null) + if (it.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC) " · Atmos" else ""
     }
 
     fun describeOutput(config: AudioSink.AudioTrackConfig): String = describe(
@@ -19,27 +20,27 @@ internal object DebugAudioFormat {
         Integer.bitCount(config.channelConfig),
         config.sampleRate,
         config.channelConfig and AudioFormat.CHANNEL_OUT_LOW_FREQUENCY != 0
-    )
+    ) + if (config.encoding == C.ENCODING_E_AC3_JOC) " · Atmos" else ""
 
     internal fun describe(codec: String, channels: Int, sampleRate: Int, hasLfe: Boolean? = null): String {
         val channelLabel = when {
             channels <= 0 -> "? ch"
-            channels == 1 -> "1.0 (1ch)"
-            channels == 2 -> "2.0 (2ch)"
-            channels == 6 && hasLfe == true -> "5.1 (6ch)"
-            channels == 8 && hasLfe == true -> "7.1 (8ch)"
-            else -> "${channels}ch"
+            channels == 1 -> "1.0 (1 canal)"
+            channels == 2 -> "2.0 (2 canais)"
+            channels == 6 && hasLfe != false -> "5.1 (6 canais)"
+            channels == 8 && hasLfe != false -> "7.1 (8 canais)"
+            else -> "$channels canais"
         }
         val rate = if (sampleRate > 0) {
             String.format(Locale.US, "%.3f", sampleRate / 1000.0).trimEnd('0').trimEnd('.') + " kHz"
         } else "? kHz"
-        return "$codec  $channelLabel  $rate"
+        return "$codec · $channelLabel · $rate"
     }
 
     private fun codecName(mime: String?): String = when (mime) {
         MimeTypes.AUDIO_AC3 -> "DD (AC-3)"
         MimeTypes.AUDIO_E_AC3 -> "DDP (E-AC-3)"
-        MimeTypes.AUDIO_E_AC3_JOC -> "DDP JOC"
+        MimeTypes.AUDIO_E_AC3_JOC -> "DDP (E-AC-3)"
         MimeTypes.AUDIO_TRUEHD -> "TrueHD"
         MimeTypes.AUDIO_DTS -> "DTS"
         MimeTypes.AUDIO_DTS_HD -> "DTS-HD"
@@ -51,7 +52,7 @@ internal object DebugAudioFormat {
     private fun encodingName(encoding: Int): String = when (encoding) {
         C.ENCODING_AC3 -> "DD (AC-3)"
         C.ENCODING_E_AC3 -> "DDP (E-AC-3)"
-        C.ENCODING_E_AC3_JOC -> "DDP JOC"
+        C.ENCODING_E_AC3_JOC -> "DDP (E-AC-3)"
         C.ENCODING_DOLBY_TRUEHD -> "TrueHD"
         C.ENCODING_DTS -> "DTS"
         C.ENCODING_DTS_HD -> "DTS-HD"

@@ -150,6 +150,10 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setForceOpticalPassthrough(enabled)
     }
 
+    suspend fun setTranscodingInputEnabled(flag: Int, enabled: Boolean) {
+        playerSettingsDataStore.setTranscodingInputEnabled(flag, enabled)
+    }
+
     suspend fun setPreferEac3Transcoding(enabled: Boolean) {
         playerSettingsDataStore.setPreferEac3Transcoding(enabled)
     }

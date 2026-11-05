@@ -9,3 +9,8 @@ internal fun FfmpegAudioRenderer.applyExperimentalEac3Preference(enabled: Boolea
     javaClass.getMethod("setPreferEac3Transcoding", Boolean::class.javaPrimitiveType)
         .invoke(this, enabled)
 }
+
+internal fun FfmpegAudioRenderer.applyTranscodingInputMask(mask: Int) {
+    if (!BuildConfig.LOCAL_FFMPEG_DECODER_ENABLED) return
+    javaClass.getMethod("setTranscodingInputMask", Int::class.javaPrimitiveType).invoke(this, mask)
+}

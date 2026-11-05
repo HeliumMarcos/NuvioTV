@@ -129,6 +129,17 @@ internal fun PlaybackAudioSection(
             enabled = enabled && settings.forceOpticalPassthrough && settings.decoderPriority != 0,
             onClick = { onOpenDialog(PlaybackDialog.TRANSCODING_FORMAT) }
         )
+        SettingsSectionLabel(text = stringResource(R.string.audio_transcoding_inputs))
+        SettingsNote(text = stringResource(R.string.audio_transcoding_inputs_sub))
+        listOf(1 to "TrueHD", 2 to "DTS", 4 to "DTS-HD").forEach { (flag, label) ->
+            SettingsToggleRow(
+                title = label,
+                subtitle = null,
+                checked = settings.transcodingInputMask and flag != 0,
+                enabled = enabled && settings.forceOpticalPassthrough && settings.decoderPriority != 0,
+                onToggle = { onUpdate { setTranscodingInputEnabled(flag, settings.transcodingInputMask and flag == 0) } }
+            )
+        }
     }
 }
 

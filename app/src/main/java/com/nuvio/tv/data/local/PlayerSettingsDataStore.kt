@@ -312,6 +312,7 @@ data class PlayerSettings(
     val tunnelingEnabled: Boolean = false,
     val forceOpticalPassthrough: Boolean = false,
     val preferEac3Transcoding: Boolean = false,
+    val transcodingInputMask: Int = 7, // TrueHD=1, DTS=2, DTS-HD=4; AAC is never selected
     val skipSilence: Boolean = false,
     val nightMode: NightMode = NightMode.OFF,
     val audioAmplificationDb: Int = 0,
@@ -637,6 +638,7 @@ class PlayerSettingsDataStore @Inject constructor(
     private val downmixNormalizationEnabledLegacyKey =
         booleanPreferencesKey("downmix_normalization_enabled")
     private val tunnelingEnabledKey = booleanPreferencesKey("tunneling_enabled")
+    private val transcodingInputMaskKey = intPreferencesKey("transcoding_input_mask")
     private val preferEac3TranscodingKey = booleanPreferencesKey("prefer_eac3_transcoding")
     private val forceOpticalPassthroughKey = booleanPreferencesKey("force_optical_passthrough")
     private val skipSilenceKey = booleanPreferencesKey("skip_silence")
@@ -1026,6 +1028,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 tunnelingEnabled = prefs[tunnelingEnabledKey] ?: false,
                 forceOpticalPassthrough = prefs[forceOpticalPassthroughKey] ?: false,
                 preferEac3Transcoding = prefs[preferEac3TranscodingKey] ?: false,
+                transcodingInputMask = (prefs[transcodingInputMaskKey] ?: 7) and 7,
                 skipSilence = prefs[skipSilenceKey] ?: false,
                 nightMode = NightMode.fromSettingValue(prefs[nightModeKey]),
                 audioAmplificationDb = (prefs[audioAmplificationDbKey] ?: 0).coerceIn(
@@ -1286,6 +1289,14 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setForceOpticalPassthrough(enabled: Boolean) {
         store().edit { prefs ->
             prefs[forceOpticalPassthroughKey] = enabled
+        }
+    }
+
+    suspend fun setTranscodingInputEnabled(flag: Int, enabled: Boolean) {
+        require(flag == 1 || flag == 2 || flag == 4)
+        store().edit { prefs ->
+            val current = prefs[transcodingInputMaskKey] ?: 7
+            prefs[transcodingInputMaskKey] = (if (enabled) current or flag else current and flag.inv()) and 7
         }
     }
 

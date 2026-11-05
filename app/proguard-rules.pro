@@ -153,3 +153,7 @@
 -keepclassmembers class androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer {
     public void setPreferEac3Transcoding(boolean);
 }
+
+-keepclassmembers class androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer {
+    public void setTranscodingInputMask(int);
+}

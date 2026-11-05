@@ -216,6 +216,7 @@ internal fun PlayerRuntimeController.applyBluetoothAudioRouteInPlace(isBluetooth
     } else {
         settings.audioOutputChannels
     }
+    ffmpegAudioRenderer?.applyTranscodingInputMask(settings.transcodingInputMask)
     ffmpegAudioRenderer?.applyExperimentalEac3Preference(settings.preferEac3Transcoding && forceOptical)
     ffmpegAudioRenderer?.setForceOpticalPassthrough(forceOptical)
     if (downmixEnabled) {
