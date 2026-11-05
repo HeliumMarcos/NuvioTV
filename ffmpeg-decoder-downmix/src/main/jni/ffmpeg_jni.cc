@@ -293,6 +293,15 @@ AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
   }
   uint8_t* inputBuffer = (uint8_t*)env->GetDirectBufferAddress(inputData);
   uint8_t* outputBuffer = (uint8_t*)env->GetDirectBufferAddress(outputData);
+  if (!inputBuffer || !outputBuffer) {
+    LOGE("Audio decoder requires valid direct input and output ByteBuffers.");
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  if (inputSize > env->GetDirectBufferCapacity(inputData) ||
+      outputSize > env->GetDirectBufferCapacity(outputData)) {
+    LOGE("Audio buffer size exceeds direct ByteBuffer capacity.");
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
   AVPacket* packet = av_packet_alloc();
   if (!packet) {
     LOGE("Failed to allocate packet.");
