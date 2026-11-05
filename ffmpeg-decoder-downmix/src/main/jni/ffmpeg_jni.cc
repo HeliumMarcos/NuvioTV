@@ -697,18 +697,6 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
             return AUDIO_DECODER_ERROR_OTHER;
           }
 
-          if (decoderContext->last_output_pts == AV_NOPTS_VALUE) {
-            // A packet can carry an unknown PTS even when input frames were
-            // timestamped. Prefer DTS only when it is explicitly available;
-            // otherwise let Java keep the original input timestamp.
-            const int64_t packetPts = decoderContext->encoder_packet->pts;
-            const int64_t packetDts = decoderContext->encoder_packet->dts;
-            if (packetPts != AV_NOPTS_VALUE) {
-              decoderContext->last_output_pts = packetPts;
-            } else if (packetDts != AV_NOPTS_VALUE) {
-              decoderContext->last_output_pts = packetDts;
-            }
-          }
           // Keep access-unit boundaries intact across decoder calls. The
           // SimpleDecoder API permits only one output buffer per input.
           int packetSize = decoderContext->encoder_packet->size;
