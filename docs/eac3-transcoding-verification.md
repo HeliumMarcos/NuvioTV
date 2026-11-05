@@ -87,3 +87,7 @@ The timestamp bridge is also subject to the multi-packet output framing limitati
 ### Encoded access-unit integrity gate
 
 JNI now enqueues encoded AC-3/E-AC-3 packets individually (including their PTS/DTS) and dequeues **at most one** access unit per successful `decodePacket()` call. The Java decoder retains its one-access-unit validation. The native queue is bounded to 256 packets and is discarded on decoder reset/release. **This is not yet a complete output scheduling solution**: a queued packet is emitted only when another input packet reaches the decoder, and upstream `SimpleDecoder` bypasses subclass decoding for EOS input. Pending packets may therefore be lost at EOS, and a backlog can reach the queue limit and fail playback. Proper EOS draining and independent output dequeue remain release blockers. No native build or device test has validated this queue.
+
+### Independent queue-dequeue JNI primitive (not yet wired)
+
+Native `dequeueEncodedPacket()` now handles one access unit independently of decoding input. JNI exposes `ffmpegGetPendingEncodedPacketCount()` and `ffmpegDequeueEncodedPacket()`, with matching Java native declarations. A failed output-buffer grow does not consume the queued packet. These APIs are **not yet invoked** by the current `SimpleDecoder` implementation. The EOS lifecycle bypass still prevents emitting pending packets at track end; the FFmpeg decoder/resampler/encoder itself is also not yet flushed. A drain-capable output scheduler and full codec flush are still required before playback validation.
