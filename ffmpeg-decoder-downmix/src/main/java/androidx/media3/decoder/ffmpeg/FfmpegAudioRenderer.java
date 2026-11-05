@@ -35,6 +35,9 @@ import androidx.media3.common.util.TraceUtil;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.decoder.CryptoConfig;
+import androidx.media3.decoder.Decoder;
+import androidx.media3.decoder.DecoderInputBuffer;
+import androidx.media3.decoder.SimpleDecoderOutputBuffer;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.audio.AudioRendererEventListener;
 import androidx.media3.exoplayer.audio.AudioSink;
@@ -43,7 +46,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink;
 
 /** Decodes and renders audio using FFmpeg. */
 @UnstableApi
-public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioDecoder> {
+public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException>> {
 
   private static final String TAG = "FfmpegAudioRenderer";
 
@@ -193,7 +196,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   }
 
   @Override
-  protected FfmpegAudioDecoder createDecoder(Format format, @Nullable CryptoConfig cryptoConfig)
+  protected Decoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException> createDecoder(Format format, @Nullable CryptoConfig cryptoConfig)
       throws FfmpegDecoderException {
     TraceUtil.beginSection("createFfmpegAudioDecoder");
     String mimeType = checkNotNull(format.sampleMimeType);
@@ -251,25 +254,31 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     decoder.setLfeMixLevel(lfeMixLevel);
     activeDecoder = decoder;
     TraceUtil.endSection();
-    return decoder;
+    // Compressed output can generate several packets after input EOS.
+    // Keep the existing SimpleDecoder pipeline unchanged for PCM playback.
+    return decoder.isCompressedOutput() ? new EncodedEosDecoder(decoder) : decoder;
   }
 
   @Override
-  protected Format getOutputFormat(FfmpegAudioDecoder decoder) {
+  protected Format getOutputFormat(
+      Decoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException> decoder) {
     checkNotNull(decoder);
-    int encoding = decoder.getEncoding();
+    FfmpegAudioDecoder ffmpegDecoder = decoder instanceof EncodedEosDecoder
+        ? ((EncodedEosDecoder) decoder).getUnderlyingDecoder()
+        : (FfmpegAudioDecoder) decoder;
+    int encoding = ffmpegDecoder.getEncoding();
     if (encoding == C.ENCODING_AC3 || encoding == C.ENCODING_E_AC3) {
       return new Format.Builder()
           .setSampleMimeType(encoding == C.ENCODING_E_AC3
               ? MimeTypes.AUDIO_E_AC3 : MimeTypes.AUDIO_AC3)
-          .setChannelCount(decoder.getChannelCount())
-          .setSampleRate(decoder.getSampleRate())
+          .setChannelCount(ffmpegDecoder.getChannelCount())
+          .setSampleRate(ffmpegDecoder.getSampleRate())
           .build();
     }
     return new Format.Builder()
         .setSampleMimeType(MimeTypes.AUDIO_RAW)
-        .setChannelCount(decoder.getChannelCount())
-        .setSampleRate(decoder.getSampleRate())
+        .setChannelCount(ffmpegDecoder.getChannelCount())
+        .setSampleRate(ffmpegDecoder.getSampleRate())
         .setPcmEncoding(encoding)
         .build();
   }
