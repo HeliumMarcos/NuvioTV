@@ -71,7 +71,8 @@ import java.util.List;
   // First input timestamp anchors native encoder-relative PTS to media time.
   private long encodedTimeAnchorUs = C.TIME_UNSET;
   // Accessed only by the decoder/output scheduler thread. Reset on seek.
-  private boolean encodedEndOfStreamComplete;
+  private volatile boolean encodedEndOfStreamComplete;
+  private volatile boolean syntheticDrainStepFinished;
 
   public FfmpegAudioDecoder(
       Format format,
@@ -144,6 +145,7 @@ import java.util.List;
       hasOutputFormat = false;
       encodedTimeAnchorUs = C.TIME_UNSET;
       encodedEndOfStreamComplete = false;
+      syntheticDrainStepFinished = false;
     }
     if (inputBuffer.timeUs == ENCODED_DRAIN_INPUT_TIME_US) {
       try {
@@ -153,6 +155,10 @@ import java.util.List;
         return null;
       } catch (FfmpegDecoderException error) {
         return error;
+      } finally {
+        // Allows the renderer-facing wrapper to schedule the next drain
+        // step even when SimpleDecoder discards an empty output buffer.
+        syntheticDrainStepFinished = true;
       }
     }
     if ((outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3)
@@ -456,6 +462,14 @@ import java.util.List;
     }
     encodedEndOfStreamComplete = true;
     return false;
+  }
+
+  boolean hasFinishedSyntheticDrainStep() {
+    return syntheticDrainStepFinished;
+  }
+
+  void prepareSyntheticDrainStep() {
+    syntheticDrainStepFinished = false;
   }
 
   boolean isEncodedEndOfStreamComplete() {
