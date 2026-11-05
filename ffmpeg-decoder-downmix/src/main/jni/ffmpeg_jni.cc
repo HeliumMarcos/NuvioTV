@@ -126,6 +126,8 @@ struct DecoderContext {
   bool encoder_initialized;
   // Presentation timestamp of the next encoded frame, in output samples.
   int64_t next_encoder_pts;
+  // First packet PTS emitted by the most recent decodePacket call.
+  int64_t last_output_pts;
 };
 
 static jmethodID growOutputBufferMethod;
@@ -305,6 +307,8 @@ AUDIO_DECODER_FUNC(jint, ffmpegDecode, jlong context, jobject inputData,
     LOGE("Audio buffer size exceeds direct ByteBuffer capacity.");
     return AUDIO_DECODER_ERROR_OTHER;
   }
+  DecoderContext* decoderContext = (DecoderContext*)context;
+  decoderContext->last_output_pts = AV_NOPTS_VALUE;
   AVPacket* packet = av_packet_alloc();
   if (!packet) {
     LOGE("Failed to allocate packet.");
@@ -331,6 +335,22 @@ uint8_t* GrowOutputBufferCallback::operator()(int requiredSize) const {
     return nullptr;
   }
   return static_cast<uint8_t*>(env->GetDirectBufferAddress(newOutputData));
+}
+
+// Returns the first compressed packet timestamp relative to this encoder
+// session, in microseconds. Java adds the media timeline anchor.
+AUDIO_DECODER_FUNC(jlong, ffmpegGetOutputTimeUs, jlong context) {
+  if (!context) {
+    return (jlong)AV_NOPTS_VALUE;
+  }
+  DecoderContext* decoderContext = (DecoderContext*)context;
+  if (!decoderContext->encoder_context ||
+      decoderContext->last_output_pts == AV_NOPTS_VALUE) {
+    return (jlong)AV_NOPTS_VALUE;
+  }
+  return (jlong)av_rescale_q(decoderContext->last_output_pts,
+                            decoderContext->encoder_context->time_base,
+                            AVRational{1, 1000000});
 }
 
 AUDIO_DECODER_FUNC(jint, ffmpegGetChannelCount, jlong context) {
@@ -658,6 +678,9 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
             return AUDIO_DECODER_ERROR_OTHER;
           }
 
+          if (decoderContext->last_output_pts == AV_NOPTS_VALUE) {
+            decoderContext->last_output_pts = decoderContext->encoder_packet->pts;
+          }
           int packetSize = decoderContext->encoder_packet->size;
           // Guard the signed JNI buffer size before computing the required
           // capacity. Encoded packets can be produced in batches.
@@ -1021,6 +1044,7 @@ void clearResampler(DecoderContext* decoderContext) {
   }
   decoderContext->encoder_initialized = false;
   decoderContext->next_encoder_pts = 0;
+  decoderContext->last_output_pts = AV_NOPTS_VALUE;
 }
 
 void resetLimiter(AudioLimiter* limiter) {
