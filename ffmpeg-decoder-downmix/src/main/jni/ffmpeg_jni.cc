@@ -40,6 +40,8 @@ extern "C" {
 #include <libavutil/channel_layout.h>
 #include <libavutil/downmix_info.h>
 #include <libavutil/error.h>
+#include <libavutil/mem.h>
+#include <libavutil/samplefmt.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
 #include <libavutil/audio_fifo.h>
