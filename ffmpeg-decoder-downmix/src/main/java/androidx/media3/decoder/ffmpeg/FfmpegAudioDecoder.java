@@ -31,13 +31,11 @@ import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.ParsableByteArray;
 import androidx.media3.common.util.Util;
-import androidx.media3.decoder.Decoder;
 import androidx.media3.decoder.DecoderInputBuffer;
 import androidx.media3.decoder.SimpleDecoder;
 import androidx.media3.decoder.SimpleDecoderOutputBuffer;
 import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.concurrent.Executor;
 
 /** FFmpeg audio decoder with optional float output for active FFmpeg downmixing. */
 /* package */ final class FfmpegAudioDecoder
@@ -77,8 +75,6 @@ import java.util.concurrent.Executor;
   private volatile boolean encodedEndOfStreamComplete;
   private volatile boolean syntheticDrainStepFinished;
   private volatile int pendingEncodedPacketsSnapshot;
-  @Nullable private volatile Decoder.Callback drainWakeupCallback;
-  @Nullable private volatile Executor drainWakeupExecutor;
 
   public FfmpegAudioDecoder(
       Format format,
@@ -165,7 +161,7 @@ import java.util.concurrent.Executor;
       } finally {
         pendingEncodedPacketsSnapshot = getPendingEncodedPacketCount();
         syntheticDrainStepFinished = true;
-        notifyDrainWakeup();
+        
       }
     }
     if (inputBuffer.timeUs == ENCODED_DRAIN_INPUT_TIME_US) {
@@ -181,7 +177,7 @@ import java.util.concurrent.Executor;
         // step even when SimpleDecoder discards an empty output buffer.
         pendingEncodedPacketsSnapshot = getPendingEncodedPacketCount();
         syntheticDrainStepFinished = true;
-        notifyDrainWakeup();
+        
       }
     }
     if ((outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3)
@@ -490,12 +486,6 @@ import java.util.concurrent.Executor;
     return false;
   }
 
-  void setDrainWakeupCallback(
-      @Nullable Decoder.Callback callback, @Nullable Executor executor) {
-    drainWakeupCallback = callback;
-    drainWakeupExecutor = executor;
-  }
-
   int getPendingEncodedPacketsSnapshot() {
     return pendingEncodedPacketsSnapshot;
   }
@@ -506,14 +496,6 @@ import java.util.concurrent.Executor;
     pendingEncodedPacketsSnapshot = 0;
     syntheticDrainStepFinished = false;
     encodedEndOfStreamComplete = false;
-  }
-
-  private void notifyDrainWakeup() {
-    @Nullable Decoder.Callback callback = drainWakeupCallback;
-    @Nullable Executor executor = drainWakeupExecutor;
-    if (callback != null && executor != null) {
-      executor.execute(callback::onOutputBufferAvailable);
-    }
   }
 
   boolean hasFinishedSyntheticDrainStep() {
