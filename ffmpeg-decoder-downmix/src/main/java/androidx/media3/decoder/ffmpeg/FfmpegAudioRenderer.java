@@ -142,6 +142,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
         || MimeTypes.AUDIO_TRUEHD.equals(mimeType);
     boolean transcodeToAc3 = forceOpticalPassthrough &&
         !MimeTypes.AUDIO_AC3.equals(mimeType) &&
+        !MimeTypes.AUDIO_E_AC3.equals(mimeType) &&
         (format.channelCount > 2 || format.channelCount <= 0 || isDtsOrTrueHd);
 
     if (!transcodeToAc3 && (format.channelCount <= 0 || format.sampleRate <= 0)) {
@@ -196,6 +197,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
         || MimeTypes.AUDIO_TRUEHD.equals(mimeType);
     boolean transcodeToAc3 = forceOpticalPassthrough &&
         !MimeTypes.AUDIO_AC3.equals(mimeType) &&
+        !MimeTypes.AUDIO_E_AC3.equals(mimeType) &&
         (format.channelCount > 2 || format.channelCount <= 0 || isDtsOrTrueHd);
     int initialInputBufferSize =
         format.maxInputSize != Format.NO_VALUE ? format.maxInputSize : DEFAULT_INPUT_BUFFER_SIZE;
