@@ -361,7 +361,7 @@ AUDIO_DECODER_FUNC(jlong, ffmpegReset, jlong jContext, jbyteArray extraData) {
     jint outputChannelCount = decoderContext->requested_output_channel_count;
     jboolean outputFloat =
         decoderContext->output_sample_format == OUTPUT_FORMAT_PCM_FLOAT;
-    jint transcodingMode = decoderContext->transcoding_mode != 0;
+    jint transcodingMode = decoderContext->transcoding_mode;
     jstring requestedOutputLayoutName = NULL;
     if (decoderContext->requested_output_layout_name) {
       requestedOutputLayoutName =
