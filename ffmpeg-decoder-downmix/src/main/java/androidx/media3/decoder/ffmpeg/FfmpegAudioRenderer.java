@@ -139,11 +139,17 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
     if (!FfmpegLibrary.supportsFormat(mimeType)) {
       return C.FORMAT_UNSUPPORTED_SUBTYPE;
     }
+    // A forced-transcoding session must never capture unselected codecs for PCM
+    // decoding. Leave them to the platform renderer and its native passthrough.
+    if (forceOpticalPassthrough && !isTranscodingInputSelected(
+        mimeType, preferEac3Transcoding ? transcodingInputMask & 7 : transcodingInputMask)) {
+      return C.FORMAT_UNSUPPORTED_SUBTYPE;
+    }
     if (forceOpticalPassthrough && MimeTypes.AUDIO_AC3.equals(mimeType)) {
       return C.FORMAT_UNSUPPORTED_SUBTYPE;
     }
-    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(mimeType, preferEac3Transcoding ? transcodingInputMask & 7 : transcodingInputMask) &&
-        !MimeTypes.AUDIO_AC3.equals(mimeType);
+    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(
+        mimeType, preferEac3Transcoding ? transcodingInputMask & 7 : transcodingInputMask);
 
     if (!transcodeToAc3 && (format.channelCount <= 0 || format.sampleRate <= 0)) {
       return format.cryptoType == C.CRYPTO_TYPE_NONE
@@ -160,7 +166,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
               .setChannelCount(eac3OutputChannels(format.channelCount))
               .setSampleRate(sampleRate)
               .build());
-      supportsConfiguredOutput = eac3Supported || sinkSupportsFormat(
+      supportsConfiguredOutput = preferEac3Transcoding ? eac3Supported : sinkSupportsFormat(
           new Format.Builder()
               .setSampleMimeType(MimeTypes.AUDIO_AC3)
               .setChannelCount(6)
@@ -169,9 +175,9 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
     } else {
       supportsConfiguredOutput = false;
     }
-    // Match createDecoder(): if compressed output is unavailable, evaluate
-    // the ordinary PCM fallback instead of advertising an unsupported format.
-    if (!transcodeToAc3 || !supportsConfiguredOutput) {
+    // Do not silently decode selected codecs to PCM if the requested encoded
+    // output is unavailable. Let another renderer handle the unsupported route.
+    if (!transcodeToAc3) {
       int outputChannelCount = resolveOutputChannelCount(format.channelCount);
       boolean shouldRequestDownmix = shouldRequestDownmix(format.channelCount, outputChannelCount);
       @C.PcmEncoding int outputEncoding =
@@ -211,9 +217,16 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
             .setChannelCount(eac3OutputChannels(format.channelCount))
             .setSampleRate(48000)
             .build());
-    boolean transcodeToAc3 = forceOpticalPassthrough && isTranscodingInputSelected(mimeType, preferEac3Transcoding ? transcodingInputMask & 7 : transcodingInputMask) &&
-        (ac3Supported || eac3Supported) &&
-        !MimeTypes.AUDIO_AC3.equals(mimeType);
+    boolean selected = isTranscodingInputSelected(
+        mimeType, preferEac3Transcoding ? transcodingInputMask & 7 : transcodingInputMask);
+    if (forceOpticalPassthrough && !selected) {
+      throw new FfmpegDecoderException("Unselected codec must use the platform renderer: " + mimeType);
+    }
+    boolean transcodeToAc3 = forceOpticalPassthrough && selected &&
+        (preferEac3Transcoding ? eac3Supported : ac3Supported);
+    if (forceOpticalPassthrough && selected && !transcodeToAc3) {
+      throw new FfmpegDecoderException("Requested compressed output is not supported by the audio sink.");
+    }
     if (transcodeToAc3 && preferEac3Transcoding && format.channelCount == 8 && !eac3Supported) {
       throw new FfmpegDecoderException("E-AC-3 7.1 output is unsupported by the audio sink; refusing 5.1 conversion.");
     }
