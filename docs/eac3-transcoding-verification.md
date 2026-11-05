@@ -62,3 +62,18 @@ The local module currently specifies NDK `29.0.14206865` and CMake `3.22.1`. Bui
 - Test output timestamps, end-of-stream draining, seek/reset and encoder reconfiguration.
 - Confirm 48 kHz resampling with real 96/192 kHz TrueHD samples.
 - Wire the opt-in renderer setter into playback settings only after build and playback verification.
+
+## Encoded audio end-of-stream and timestamp audit (open)
+
+The current JNI `decodePacket()` receives input packets, collects decoded frames, resamples them, and emits compressed packets only when the audio FIFO contains at least one full encoder frame. There is **no demonstrated explicit end-of-stream drain** of the decoder, resampler, FIFO, and encoder. The final fractional encoder frame may therefore remain buffered when the track ends. Do not mark this as resolved.
+
+The Java `FfmpegAudioDecoder.decode()` assigns each returned output buffer the input buffer's `timeUs`. When an encoder buffers multiple decoded frames or returns several encoded packets at once, this does **not** establish per-packet presentation timestamps. Before enabling E-AC-3 in the UI, verify that the Media3 encoded audio sink accepts the framing and timestamps emitted by this decoder.
+
+Required implementation review:
+1. Determine how `SimpleDecoder` handles EOS input and whether `decode()` is called for EOS buffers.
+2. Define a safe JNI drain path (decoder `avcodec_send_packet(NULL)`, `swr_convert` drain, padded final FIFO frame if appropriate, `avcodec_send_frame(NULL)`, and receive remaining packets).
+3. Preserve encoded packet boundaries or prove concatenated packets are accepted by the selected `AudioSink`.
+4. Verify output timestamps against the encoder sample counter (48 kHz) and actual input PTS, especially after seeks.
+5. Reset counters and discard buffered audio on seek/track changes; never emit pre-seek samples after reset.
+
+These items are intentionally **not claimed as implemented**.
