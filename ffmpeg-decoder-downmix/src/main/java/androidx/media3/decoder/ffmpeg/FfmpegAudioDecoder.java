@@ -45,6 +45,7 @@ import java.util.concurrent.Executor;
   // Private synthetic input used by EncodedEosDecoder to advance the native
   // drain on the SimpleDecoder worker thread. Never passed to FFmpeg as media.
   static final long ENCODED_DRAIN_INPUT_TIME_US = Long.MAX_VALUE;
+  static final long ENCODED_PENDING_INPUT_TIME_US = Long.MAX_VALUE - 1;
 
   private static final int INITIAL_OUTPUT_BUFFER_SIZE = 65535 * 2;
 
@@ -74,6 +75,7 @@ import java.util.concurrent.Executor;
   // Accessed only by the decoder/output scheduler thread. Reset on seek.
   private volatile boolean encodedEndOfStreamComplete;
   private volatile boolean syntheticDrainStepFinished;
+  private volatile int pendingEncodedPacketsSnapshot;
   @Nullable private volatile Decoder.Callback drainWakeupCallback;
   @Nullable private volatile Executor drainWakeupExecutor;
 
@@ -149,6 +151,21 @@ import java.util.concurrent.Executor;
       encodedTimeAnchorUs = C.TIME_UNSET;
       encodedEndOfStreamComplete = false;
       syntheticDrainStepFinished = false;
+      pendingEncodedPacketsSnapshot = 0;
+    }
+    if (inputBuffer.timeUs == ENCODED_PENDING_INPUT_TIME_US) {
+      try {
+        if (!dequeuePendingEncodedPacket(outputBuffer)) {
+          outputBuffer.shouldBeSkipped = true;
+        }
+        return null;
+      } catch (FfmpegDecoderException error) {
+        return error;
+      } finally {
+        pendingEncodedPacketsSnapshot = getPendingEncodedPacketCount();
+        syntheticDrainStepFinished = true;
+        notifyDrainWakeup();
+      }
     }
     if (inputBuffer.timeUs == ENCODED_DRAIN_INPUT_TIME_US) {
       try {
@@ -161,15 +178,9 @@ import java.util.concurrent.Executor;
       } finally {
         // Allows the renderer-facing wrapper to schedule the next drain
         // step even when SimpleDecoder discards an empty output buffer.
+        pendingEncodedPacketsSnapshot = getPendingEncodedPacketCount();
         syntheticDrainStepFinished = true;
-        // A synthetic step can produce no output. SimpleDecoder then discards
-        // its buffer and does not emit an output-available callback, so wake
-        // the renderer explicitly to schedule the next drain step.
-        @Nullable Decoder.Callback callback = drainWakeupCallback;
-        @Nullable Executor executor = drainWakeupExecutor;
-        if (callback != null && executor != null) {
-          executor.execute(callback::onOutputBufferAvailable);
-        }
+        notifyDrainWakeup();
       }
     }
     if ((outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3)
@@ -190,6 +201,9 @@ import java.util.concurrent.Executor;
             userCenterMixLevelDb,
             downmixNormalizationEnabled,
             lfeMixLevel);
+    if (isCompressedOutput()) {
+      pendingEncodedPacketsSnapshot = getPendingEncodedPacketCount();
+    }
     if (result == AUDIO_DECODER_ERROR_OTHER) {
       return new FfmpegDecoderException("Error decoding (see logcat).");
     } else if (result == AUDIO_DECODER_ERROR_INVALID_DATA) {
@@ -479,6 +493,18 @@ import java.util.concurrent.Executor;
       @Nullable Decoder.Callback callback, @Nullable Executor executor) {
     drainWakeupCallback = callback;
     drainWakeupExecutor = executor;
+  }
+
+  int getPendingEncodedPacketsSnapshot() {
+    return pendingEncodedPacketsSnapshot;
+  }
+
+  private void notifyDrainWakeup() {
+    @Nullable Decoder.Callback callback = drainWakeupCallback;
+    @Nullable Executor executor = drainWakeupExecutor;
+    if (callback != null && executor != null) {
+      executor.execute(callback::onOutputBufferAvailable);
+    }
   }
 
   boolean hasFinishedSyntheticDrainStep() {
