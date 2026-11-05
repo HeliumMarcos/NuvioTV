@@ -17,6 +17,7 @@ jobs:
       FFMPEG_TARGET_ABI: arm64-v8a
       FFMPEG_BUILD_JOBS: '4'
       USE_LOCAL_FFMPEG_DECODER: 'true'
+      CI_USE_DEBUG_SIGNING: 'true'
       FFMPEG_SOURCE_DIR: ${{ github.workspace }}/ffmpeg-decoder-downmix/src/main/jni/ffmpeg
       FFMPEG_BUILD_DIR: ${{ github.workspace }}/ffmpeg-decoder-downmix/src/main/jni/ffmpeg/android-libs
     steps:
@@ -65,11 +66,15 @@ jobs:
             -PuseLocalFfmpegDecoder=true \
             -Pandroid.injected.build.abi=arm64-v8a \
             --stacktrace --no-daemon
+      - name: Verify debug APK outputs
+        run: |
+          find app/build/outputs/apk -type f -name '*.apk' -print
+          test -n "$(find app/build/outputs/apk -type f -name '*.apk' -print -quit)"
       - name: Upload experimental debug APK
         uses: actions/upload-artifact@v4
         with:
           name: nuviotv-eac3-experimental-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
       - name: Upload compiled decoder AAR
         uses: actions/upload-artifact@v4
