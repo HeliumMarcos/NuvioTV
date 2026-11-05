@@ -887,7 +887,17 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     }
     decoderContext->encoder_frame->nb_samples = enc_ctx->frame_size;
     decoderContext->encoder_frame->format = enc_ctx->sample_fmt;
-    av_channel_layout_copy(&decoderContext->encoder_frame->ch_layout, &enc_ctx->ch_layout);
+    ret = av_channel_layout_copy(&decoderContext->encoder_frame->ch_layout, &enc_ctx->ch_layout);
+    if (ret < 0) {
+      logError("av_channel_layout_copy (encoder frame)", ret);
+      av_frame_free(&decoderContext->encoder_frame);
+      av_audio_fifo_free(decoderContext->fifo);
+      decoderContext->fifo = nullptr;
+      avcodec_free_context(&decoderContext->encoder_context);
+      av_channel_layout_uninit(&inputLayout);
+      av_channel_layout_uninit(&outputLayout);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
     ret = av_frame_get_buffer(decoderContext->encoder_frame, 0);
     if (ret < 0) {
       logError("av_frame_get_buffer (encoder)", ret);
