@@ -662,6 +662,13 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
           av_get_bytes_per_sample(decoderContext->output_sample_format);
       int outSamples =
           swr_get_out_samples(decoderContext->resample_context, frame->nb_samples);
+      if (outSampleSize <= 0 || outputChannelCount <= 0 || outSamples < 0 ||
+          outSamples > INT_MAX / outSampleSize / outputChannelCount ||
+          outSampleSize * outputChannelCount * outSamples > INT_MAX - outSize) {
+        LOGE("Invalid or overflowing PCM output dimensions.");
+        av_frame_free(&frame);
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
       int bufferOutSize = outSampleSize * outputChannelCount * outSamples;
       if (outSize + bufferOutSize > outputSize) {
         LOGD(
