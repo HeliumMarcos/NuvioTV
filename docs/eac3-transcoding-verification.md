@@ -111,3 +111,7 @@ Native `ffmpegDrainDecoder()` now passes a null input packet to `decodePacket()`
 ### Confirmed decoder EOF guard
 
 `ffmpegDrainDecoder()` now records `decoder_drain_completed` only after `avcodec_receive_frame()` returns `AVERROR_EOF`; Java can query it with `isDecoderDrainComplete()`. A zero-byte drain response is **not** proof of EOF. Terminal `ffmpegFlushEncodedFrames()` now refuses to run before confirmed decoder EOF. **This guard does not confirm SwrContext is empty:** resampler drain and Media3 output scheduling are still unimplemented. The guard is reset on decoder reset. No native build or device tests have been performed.
+
+### SwrContext delayed-sample drain (experimental)
+
+The JNI `ffmpegDrainResampler()` and Java `drainResamplerAfterDecoderEof()` are now available. After confirmed decoder EOF, the native routine repeatedly calls `swr_convert(..., nullptr, 0)`, writes produced planar-float samples to the encoder FIFO, encodes full frames and queues individual access units. It marks `resampler_drain_completed` when no more samples are produced; terminal encoder flush now requires both decoder and resampler completion. This path is **not wired into Media3 EOS**. The native loop, buffer sizing, delayed-sample accounting, and encoder behavior still require native compilation and tests, especially for sample-rate conversion and seeks. The Java drain calls must be sequenced by an output scheduler that can emit additional buffers; until then, this is not an end-to-end working feature.
