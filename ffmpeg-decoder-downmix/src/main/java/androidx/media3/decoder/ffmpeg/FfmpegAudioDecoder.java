@@ -431,6 +431,42 @@ import java.util.List;
     return true;
   }
 
+  // Start native decoder EOF handling. This can return one queued encoded
+  // access unit; a drain-capable scheduler must continue until no output
+  // remains, then drain SwrContext before finalizing the encoder.
+  int drainDelayedDecoderFrames(SimpleDecoderOutputBuffer outputBuffer)
+      throws FfmpegDecoderException {
+    if (outputEncoding != C.ENCODING_AC3 && outputEncoding != C.ENCODING_E_AC3) {
+      return 0;
+    }
+    ByteBuffer data = outputBuffer.init(
+        encodedTimeAnchorUs == C.TIME_UNSET ? 0 : encodedTimeAnchorUs, outputBufferSize);
+    int size = ffmpegDrainDecoder(
+        nativeContext, outputBuffer, data, outputBufferSize,
+        userCenterMixLevelDb, downmixNormalizationEnabled, lfeMixLevel);
+    if (size < 0) {
+      throw new FfmpegDecoderException("Failed to drain delayed FFmpeg decoder frames.");
+    }
+    if (size > 0) {
+      data = checkNotNull(outputBuffer.data);
+      data.position(0);
+      data.limit(size);
+      long packetTimeUs = ffmpegGetOutputTimeUs(nativeContext);
+      if (packetTimeUs != Long.MIN_VALUE && encodedTimeAnchorUs != C.TIME_UNSET
+          && ((packetTimeUs > 0 && encodedTimeAnchorUs <= Long.MAX_VALUE - packetTimeUs)
+              || (packetTimeUs < 0 && encodedTimeAnchorUs >= Long.MIN_VALUE - packetTimeUs)
+              || packetTimeUs == 0)) {
+        outputBuffer.timeUs = encodedTimeAnchorUs + packetTimeUs;
+      }
+    }
+    return size;
+  }
+
+  private native int ffmpegDrainDecoder(
+      long context, SimpleDecoderOutputBuffer decoderOutputBuffer, ByteBuffer outputData,
+      int outputSize, int userCenterMixLevelDb, boolean downmixNormalizationEnabled,
+      float lfeMixLevel);
+
   // Only call after the upstream FFmpeg decoder and resampler are drained.
   // Returns the number of queued encoded packets, or a negative error.
   int flushEncodedFramesAfterUpstreamDrain() throws FfmpegDecoderException {
