@@ -188,6 +188,15 @@ import java.util.List;
     outputData.position(0);
     outputData.limit(result);
     if (outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3) {
+      int accessUnitCount = ffmpegGetOutputPacketCount(nativeContext);
+      if (accessUnitCount != 1) {
+        // A SimpleDecoderOutputBuffer has one presentation timestamp. Do not
+        // send concatenated compressed access units with an incorrect frame
+        // count or timestamp to the Media3 passthrough sink.
+        return new FfmpegDecoderException(
+            "Expected exactly one encoded audio access unit, got " + accessUnitCount
+                + ". Encoded packet queueing is not implemented yet.");
+      }
       long packetTimeUs = ffmpegGetOutputTimeUs(nativeContext);
       if (packetTimeUs != Long.MIN_VALUE && encodedTimeAnchorUs != C.TIME_UNSET) {
         // Guard the media-time conversion against signed overflow. A corrupt
@@ -383,6 +392,8 @@ import java.util.List;
       int userCenterMixLevelDb,
       boolean downmixNormalizationEnabled,
       float lfeMixLevel);
+
+  private native int ffmpegGetOutputPacketCount(long context);
 
   private native long ffmpegGetOutputTimeUs(long context);
 
