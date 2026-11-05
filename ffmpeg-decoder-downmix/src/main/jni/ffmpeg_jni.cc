@@ -532,16 +532,30 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                          convertedSamples, nb_channels, sampleRate);
       }
 
-      av_audio_fifo_write(decoderContext->fifo, (void**)converted_data, convertedSamples);
+      int writtenSamples =
+          av_audio_fifo_write(decoderContext->fifo, (void**)converted_data, convertedSamples);
 
       for (int i = 0; i < nb_channels; i++) {
         free(converted_data[i]);
       }
       free(converted_data);
 
+      if (writtenSamples != convertedSamples) {
+        LOGE("AC3 FIFO write failed: expected %d samples, wrote %d",
+             convertedSamples, writtenSamples);
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
+
       while (av_audio_fifo_size(decoderContext->fifo) >= decoderContext->encoder_context->frame_size) {
-        av_audio_fifo_read(decoderContext->fifo, (void**)decoderContext->encoder_frame->data,
-                            decoderContext->encoder_context->frame_size);
+        int requestedSamples = decoderContext->encoder_context->frame_size;
+        int readSamples = av_audio_fifo_read(
+            decoderContext->fifo, (void**)decoderContext->encoder_frame->data,
+            requestedSamples);
+        if (readSamples != requestedSamples) {
+          LOGE("AC3 FIFO read failed: expected %d samples, read %d",
+               requestedSamples, readSamples);
+          return AUDIO_DECODER_ERROR_OTHER;
+        }
 
         int ret = avcodec_send_frame(decoderContext->encoder_context, decoderContext->encoder_frame);
         if (ret < 0) {
