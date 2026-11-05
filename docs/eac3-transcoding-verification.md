@@ -134,3 +134,7 @@ The new JNI/Java `isResamplerDrainComplete()` query is available to distinguish 
 ### Native memory and JNI growth checks
 
 The experimental `ffmpegDrainResampler()` now limits each planar-float allocation to 8,192 output samples, iterating for larger delayed buffers, and validates aggregate channel/sample dimensions against integer overflow. `GrowOutputBufferCallback` checks that Java returns a direct buffer of sufficient capacity and releases the JNI local reference created by `CallObjectMethod`. These are static code hardening changes; native compilation and runtime behavior remain unverified. **The Media3 EOS scheduler is still missing**; no claim of gapless or complete end-of-stream output is made.
+
+### EOS backpressure and bounded queue behavior
+
+Decoder EOF submission may return `AVERROR(EAGAIN)` while delayed decoded frames remain. The native drain now receives those frames and allows EOS submission to be retried on a later call, rather than treating EAGAIN as fatal. The resampler drain also pauses before the pending encoded-packet queue approaches its 256-unit limit (threshold 248); the future output scheduler must dequeue packets and call it again until `isResamplerDrainComplete()` is true. **A positive queued-packet count does not imply completion.** The threshold assumes the current fixed 1,536-sample AC-3/E-AC-3 frame and 8,192-sample drain batch; verify these assumptions during native tests. Neither change is connected to the Media3 EOS scheduler, and neither has been compiled or exercised on a device.
