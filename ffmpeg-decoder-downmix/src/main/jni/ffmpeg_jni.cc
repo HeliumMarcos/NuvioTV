@@ -838,7 +838,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     decoderContext->fifo = av_audio_fifo_alloc(enc_ctx->sample_fmt, enc_ctx->ch_layout.nb_channels, 1);
     if (!decoderContext->fifo) {
       LOGE("Failed to allocate AVAudioFifo.");
-      avcodec_free_context(&enc_ctx);
+      avcodec_free_context(&decoderContext->encoder_context);
       av_channel_layout_uninit(&inputLayout);
       av_channel_layout_uninit(&outputLayout);
       return AUDIO_DECODER_ERROR_OTHER;
@@ -848,7 +848,8 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
     if (!decoderContext->encoder_frame) {
       LOGE("Failed to allocate encoder frame.");
       av_audio_fifo_free(decoderContext->fifo);
-      avcodec_free_context(&enc_ctx);
+      decoderContext->fifo = nullptr;
+      avcodec_free_context(&decoderContext->encoder_context);
       av_channel_layout_uninit(&inputLayout);
       av_channel_layout_uninit(&outputLayout);
       return AUDIO_DECODER_ERROR_OTHER;
@@ -861,7 +862,8 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       logError("av_frame_get_buffer (encoder)", ret);
       av_frame_free(&decoderContext->encoder_frame);
       av_audio_fifo_free(decoderContext->fifo);
-      avcodec_free_context(&enc_ctx);
+      decoderContext->fifo = nullptr;
+      avcodec_free_context(&decoderContext->encoder_context);
       av_channel_layout_uninit(&inputLayout);
       av_channel_layout_uninit(&outputLayout);
       return AUDIO_DECODER_ERROR_OTHER;
@@ -872,7 +874,8 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       LOGE("Failed to allocate encoder packet.");
       av_frame_free(&decoderContext->encoder_frame);
       av_audio_fifo_free(decoderContext->fifo);
-      avcodec_free_context(&enc_ctx);
+      decoderContext->fifo = nullptr;
+      avcodec_free_context(&decoderContext->encoder_context);
       av_channel_layout_uninit(&inputLayout);
       av_channel_layout_uninit(&outputLayout);
       return AUDIO_DECODER_ERROR_OTHER;
