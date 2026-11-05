@@ -178,3 +178,9 @@ The final padded AC-3/E-AC-3 frame now uses `av_audio_fifo_peek` before `avcodec
 ### Resampler-drain encoder backpressure
 
 The native `ffmpegDrainResampler` path now peeks at a complete encoder FIFO frame before `avcodec_send_frame` and consumes samples only after successful acceptance. On `AVERROR(EAGAIN)`, it receives available encoder packets into the pending queue and returns to allow a later scheduler retry, retaining the unaccepted FIFO frame and its original PTS. Resampler completion is deferred until any retained complete FIFO frames have been submitted; the zero-delay branch also executes the FIFO processing path. Test forced encoder backpressure with 48 kHz 5.1 material, final partial frames, and repeated EOS/seek. These changes are not compiled or device-tested.
+
+### EOS seek invalidation and first-packet format discovery
+
+`EncodedEosDecoder.flush()` invalidates both the pending encoded packet snapshot and the Java terminal-EOS completion flag before delegating to `SimpleDecoder.flush()`. This prevents an old terminal completion state from being reused when the next playback position is decoded. When the first compressed access unit arrives only during terminal drain (for example, an extremely short TrueHD stream), `dequeuePendingEncodedPacket()` now populates and validates the encoded output channel count and sample rate rather than relying on the normal decode path to have produced a packet already.
+
+**Still unverified:** Android Java/C++ compilation, actual Media3 1.8.0 API compatibility, native E-AC-3 encoder support, terminal drain under backpressure, seek races and output timing. The experimental feature must remain disabled by default.
