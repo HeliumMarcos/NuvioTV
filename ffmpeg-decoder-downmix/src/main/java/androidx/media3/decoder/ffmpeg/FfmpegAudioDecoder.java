@@ -41,6 +41,10 @@ import java.util.List;
 /* package */ final class FfmpegAudioDecoder
     extends SimpleDecoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException> {
 
+  // Private synthetic input used by EncodedEosDecoder to advance the native
+  // drain on the SimpleDecoder worker thread. Never passed to FFmpeg as media.
+  static final long ENCODED_DRAIN_INPUT_TIME_US = Long.MAX_VALUE;
+
   private static final int INITIAL_OUTPUT_BUFFER_SIZE = 65535 * 2;
 
   private static final int AUDIO_DECODER_ERROR_INVALID_DATA = -1;
@@ -140,6 +144,16 @@ import java.util.List;
       hasOutputFormat = false;
       encodedTimeAnchorUs = C.TIME_UNSET;
       encodedEndOfStreamComplete = false;
+    }
+    if (inputBuffer.timeUs == ENCODED_DRAIN_INPUT_TIME_US) {
+      try {
+        if (!drainNextEncodedEndOfStreamBuffer(outputBuffer)) {
+          outputBuffer.shouldBeSkipped = true;
+        }
+        return null;
+      } catch (FfmpegDecoderException error) {
+        return error;
+      }
     }
     if ((outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3)
         && encodedTimeAnchorUs == C.TIME_UNSET) {
@@ -446,6 +460,10 @@ import java.util.List;
 
   boolean isEncodedEndOfStreamComplete() {
     return encodedEndOfStreamComplete;
+  }
+
+  boolean isCompressedOutput() {
+    return outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3;
   }
 
   // For a future drain-capable output scheduler. SimpleDecoder cannot emit
