@@ -410,6 +410,95 @@ AUDIO_DECODER_FUNC(jint, ffmpegDequeueEncodedPacket, jlong context,
       GrowOutputBufferCallback{env, thiz, decoderOutputBuffer});
 }
 
+// Flush the encoder after upstream decoder and resampler have been drained.
+// This is deliberately separate from Media3 EOS handling: calling it before
+// upstream drain would truncate buffered decoded/resampled audio.
+AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
+  if (!context) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  DecoderContext* decoderContext = (DecoderContext*)context;
+  if (decoderContext->transcoding_mode == 0 ||
+      !decoderContext->encoder_context || !decoderContext->fifo ||
+      !decoderContext->encoder_frame || !decoderContext->encoder_packet) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  // Only a full upstream drain may call this method. It is intentionally not
+  // wired to the current SimpleDecoder EOS path.
+  const int frameSize = decoderContext->encoder_context->frame_size;
+  const int remaining = av_audio_fifo_size(decoderContext->fifo);
+  if (frameSize <= 0 || remaining < 0 || remaining >= frameSize) {
+    LOGE("Invalid encoder FIFO state during flush.");
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  if (remaining > 0) {
+    int ret = av_frame_make_writable(decoderContext->encoder_frame);
+    if (ret < 0) {
+      logError("av_frame_make_writable (flush)", ret);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    // Fixed-frame-size AC-3 encoders require a complete final frame.
+    // Padding is silence, and must not expose stale samples from prior frames.
+    av_samples_set_silence(decoderContext->encoder_frame->data, 0, frameSize,
+                           decoderContext->encoder_context->ch_layout.nb_channels,
+                           decoderContext->encoder_context->sample_fmt);
+    int read = av_audio_fifo_read(
+        decoderContext->fifo, (void**)decoderContext->encoder_frame->data, remaining);
+    if (read != remaining) {
+      LOGE("Unable to read remaining encoder FIFO samples.");
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    decoderContext->encoder_frame->pts = decoderContext->next_encoder_pts;
+    ret = avcodec_send_frame(decoderContext->encoder_context, decoderContext->encoder_frame);
+    if (ret < 0) {
+      logError("avcodec_send_frame (flush)", ret);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    decoderContext->next_encoder_pts += frameSize;
+  }
+  int ret = avcodec_send_frame(decoderContext->encoder_context, nullptr);
+  if (ret < 0 && ret != AVERROR_EOF) {
+    logError("avcodec_send_frame (EOF)", ret);
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  while (true) {
+    ret = avcodec_receive_packet(decoderContext->encoder_context,
+                                 decoderContext->encoder_packet);
+    if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+      break;
+    }
+    if (ret < 0) {
+      logError("avcodec_receive_packet (flush)", ret);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    if (decoderContext->encoder_packet->size <= 0 ||
+        decoderContext->pending_packet_count >= 256) {
+      av_packet_unref(decoderContext->encoder_packet);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    PendingEncodedPacket* node =
+        static_cast<PendingEncodedPacket*>(calloc(1, sizeof(PendingEncodedPacket)));
+    if (!node) {
+      av_packet_unref(decoderContext->encoder_packet);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    node->packet = av_packet_clone(decoderContext->encoder_packet);
+    av_packet_unref(decoderContext->encoder_packet);
+    if (!node->packet) {
+      free(node);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    if (decoderContext->pending_packet_tail) {
+      decoderContext->pending_packet_tail->next = node;
+    } else {
+      decoderContext->pending_packet_head = node;
+    }
+    decoderContext->pending_packet_tail = node;
+    decoderContext->pending_packet_count++;
+  }
+  return decoderContext->pending_packet_count;
+}
+
 AUDIO_DECODER_FUNC(jint, ffmpegGetPendingEncodedPacketCount, jlong context) {
   if (!context) {
     return 0;
