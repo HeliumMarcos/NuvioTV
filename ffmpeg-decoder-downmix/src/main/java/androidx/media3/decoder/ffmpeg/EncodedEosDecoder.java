@@ -134,12 +134,14 @@ final class EncodedEosDecoder
   public void release() {
     if (!released) {
       released = true;
+      delegate.setDrainWakeupCallback(null, null);
       delegate.release();
     }
   }
 
   @Override
   public void setCallback(Callback callback, Executor executor) {
+    delegate.setDrainWakeupCallback(callback, executor);
     delegate.setCallback(callback, executor);
   }
 }
