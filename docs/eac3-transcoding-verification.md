@@ -215,3 +215,5 @@ in logcat to distinguish requested E-AC-3 from the actual encoding chosen by the
 
 CI builds full ARMv7 debug APKs with testOnly disabled and runs the transcoding settings
 regression tests. Actual TrueHD playback and output encoding still require TV validation.
+
+Experimental local full debug builds use com.nuvio.tv.eac3 and the NuvioTV E-AC-3 launcher label. This preserves both com.nuvio.tv and the earlier com.nuviodebug.com install. CI restores a stable debug key from EAC3_DEBUG_KEYSTORE_BASE64 so subsequent experimental updates keep their data.
