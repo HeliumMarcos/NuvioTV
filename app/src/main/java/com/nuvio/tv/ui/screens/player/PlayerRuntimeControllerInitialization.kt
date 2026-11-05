@@ -142,7 +142,7 @@ private fun PlayerRuntimeController.disposeExoPlayerBeforeRebuild() {
     }
     _exoPlayer = null
     playbackSpeedAwareAudioSink = null
-    debugAudioTrackConfig = null
+    debugAudioTrack = null
 }
 
 /**
@@ -944,6 +944,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 preferSoftwareAudioOnly = isBluetoothAudioOutput,
                 mapDv7ToHevc = mapDv7ToHevcEnabled,
                 onPlaybackSpeedAwareAudioSinkCreated = { playbackSpeedAwareAudioSink = it },
+                onDebugAudioTrackCreated = { debugAudioTrack = it },
                 onFfmpegAudioRendererChanged = { renderer ->
                     ffmpegAudioRenderer = renderer
                     renderer?.applyDownmixSettings(
@@ -1851,21 +1852,6 @@ internal fun PlayerRuntimeController.initializePlayer(
                         )
                     }
 
-                    override fun onAudioTrackInitialized(
-                        eventTime: AnalyticsListener.EventTime,
-                        audioTrackConfig: AudioSink.AudioTrackConfig
-                    ) {
-                        debugAudioTrackConfig = audioTrackConfig
-                    }
-
-                    override fun onAudioTrackReleased(
-                        eventTime: AnalyticsListener.EventTime,
-                        audioTrackConfig: AudioSink.AudioTrackConfig
-                    ) {
-                        // A delayed release for the previous track must not erase the replacement.
-                        if (debugAudioTrackConfig === audioTrackConfig) debugAudioTrackConfig = null
-                    }
-
                     override fun onAudioUnderrun(
                         eventTime: AnalyticsListener.EventTime,
                         bufferSize: Int,
@@ -2210,6 +2196,7 @@ private class SubtitleOffsetRenderersFactory(
     private val preferSoftwareAudioOnly: Boolean = false,
     private val mapDv7ToHevc: Boolean = false,
     private val onPlaybackSpeedAwareAudioSinkCreated: (PlaybackSpeedAwareAudioSink) -> Unit,
+    private val onDebugAudioTrackCreated: (DebugAudioTrackBinding) -> Unit,
     private val onFfmpegAudioRendererChanged: (FfmpegAudioRenderer?) -> Unit,
     private val onCuesShown: (List<Cue>) -> Unit = {}
 ) : DefaultRenderersFactory(context) {
@@ -2280,6 +2267,18 @@ private class SubtitleOffsetRenderersFactory(
         }
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .setAudioTrackProvider(object : DefaultAudioSink.AudioTrackProvider {
+                override fun getAudioTrack(
+                    config: AudioSink.AudioTrackConfig,
+                    attributes: AudioAttributes,
+                    sessionId: Int,
+                    trackContext: Context?
+                ): android.media.AudioTrack {
+                    return DefaultAudioSink.AudioTrackProvider.DEFAULT
+                        .getAudioTrack(config, attributes, sessionId, trackContext)
+                        .also { onDebugAudioTrackCreated(DebugAudioTrackBinding(it, config)) }
+                }
+            })
             .setAudioProcessors(arrayOf(gainAudioProcessor, nightModeAudioProcessor))
         val baseAudioSink = builder.build()
         val playbackSpeedAwareAudioSink = PlaybackSpeedAwareAudioSink(

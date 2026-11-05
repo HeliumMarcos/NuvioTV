@@ -417,7 +417,7 @@ class PlayerRuntimeController(
     @Volatile var exoPlayerView: androidx.media3.ui.PlayerView? = null
     internal var _loadControl: DefaultLoadControl? = null
     internal var playbackSpeedAwareAudioSink: PlaybackSpeedAwareAudioSink? = null
-    internal var debugAudioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig? = null
+    @Volatile internal var debugAudioTrack: DebugAudioTrackBinding? = null
 
     internal var progressJob: Job? = null
     internal var vodTelemetryJob: Job? = null

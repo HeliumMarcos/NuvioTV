@@ -63,3 +63,32 @@ internal object DebugAudioFormat {
         else -> "encoding $encoding"
     }
 }
+
+internal data class DebugAudioOutput(val format: String, val route: String?)
+
+/** Retains the exact track created by the normal provider; no config-release identity assumptions. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+internal class DebugAudioTrackBinding(
+    private val track: android.media.AudioTrack,
+    private val config: AudioSink.AudioTrackConfig
+) {
+    fun snapshot(): DebugAudioOutput? = runCatching {
+        if (track.state != android.media.AudioTrack.STATE_INITIALIZED) return null
+        val device = track.routedDevice
+        val route = device?.let {
+            val type = when (it.type) {
+                android.media.AudioDeviceInfo.TYPE_HDMI -> "HDMI"
+                android.media.AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI ARC"
+                android.media.AudioDeviceInfo.TYPE_HDMI_EARC -> "HDMI eARC"
+                android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "TV speaker"
+                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth"
+                android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
+                android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "USB"
+                else -> "device ${it.type}"
+            }
+            val name = it.productName?.toString()?.trim().orEmpty()
+            if (name.isEmpty() || name.equals(type, ignoreCase = true)) type else "$type / $name"
+        }
+        DebugAudioOutput(DebugAudioFormat.describeOutput(config), route)
+    }.getOrNull()
+}
