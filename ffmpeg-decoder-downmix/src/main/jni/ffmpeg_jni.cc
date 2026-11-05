@@ -340,7 +340,11 @@ AUDIO_DECODER_FUNC(jint, ffmpegGetSampleRate, jlong context) {
     LOGE("Context must be non-NULL.");
     return -1;
   }
-  return ((DecoderContext*)context)->codec_context->sample_rate;
+  DecoderContext* decoderContext = (DecoderContext*)context;
+  if (decoderContext->transcode_to_ac3 && decoderContext->encoder_context) {
+    return decoderContext->encoder_context->sample_rate;
+  }
+  return decoderContext->codec_context->sample_rate;
 }
 
 AUDIO_DECODER_FUNC(jlong, ffmpegReset, jlong jContext, jbyteArray extraData) {
@@ -548,7 +552,8 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
 
       if (decoderContext->downmix_active) {
         limitPlanarFloat(&decoderContext->limiter, converted_data,
-                         convertedSamples, nb_channels, sampleRate);
+                         convertedSamples, nb_channels,
+                         decoderContext->encoder_context->sample_rate);
       }
 
       int writtenSamples =
@@ -610,7 +615,8 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
           av_packet_unref(decoderContext->encoder_packet);
         }
       }
-      codecContext->sample_rate = sampleRate;
+      // Keep the decoder input rate unchanged. The encoded output rate is
+      // reported by ffmpegGetSampleRate() from the encoder context.
     } else {
       int outputChannelCount = decoderContext->output_layout.nb_channels;
       int outSampleSize =
@@ -685,6 +691,15 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
 
   int inputSampleRate =
       frame->sample_rate > 0 ? frame->sample_rate : codecContext->sample_rate;
+  if (inputSampleRate <= 0) {
+    LOGE("Invalid input sample rate: %d", inputSampleRate);
+    av_channel_layout_uninit(&inputLayout);
+    av_channel_layout_uninit(&outputLayout);
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  // AC-3 over optical/HDMI uses a stable 48 kHz output, including when
+  // decoding high-sample-rate TrueHD. PCM-only output retains the input rate.
+  const int outputSampleRate = decoderContext->transcode_to_ac3 ? 48000 : inputSampleRate;
   AVSampleFormat inputSampleFormat = (AVSampleFormat)frame->format;
   bool isDownmixActive = outputLayout.nb_channels < inputLayout.nb_channels;
   bool applyNormalization = isDownmixActive && downmixNormalizationEnabled;
@@ -719,7 +734,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   SwrContext* resampleContext = NULL;
   int result = swr_alloc_set_opts2(&resampleContext, &outputLayout,
                                    decoderContext->output_sample_format,
-                                   inputSampleRate, &inputLayout,
+                                   outputSampleRate, &inputLayout,
                                    inputSampleFormat, inputSampleRate, 0, NULL);
   if (result < 0) {
     logError("swr_alloc_set_opts2", result);
@@ -767,9 +782,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   decoderContext->downmix_normalization_enabled = applyNormalization;
   decoderContext->has_center_mix_level = isDownmixActive;
   decoderContext->downmix_active = isDownmixActive;
-  decoderContext->limiter.sample_rate =
-      inputSampleRate > 0 ? static_cast<float>(inputSampleRate)
-                          : LIMITER_DEFAULT_SAMPLE_RATE;
+  decoderContext->limiter.sample_rate = static_cast<float>(outputSampleRate);
 
   if (decoderContext->transcode_to_ac3 && !decoderContext->encoder_initialized) {
     const AVCodec* encoder = avcodec_find_encoder(AV_CODEC_ID_AC3);
@@ -787,7 +800,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       return AUDIO_DECODER_ERROR_OTHER;
     }
     enc_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
-    enc_ctx->sample_rate = inputSampleRate;
+    enc_ctx->sample_rate = outputSampleRate;
     av_channel_layout_copy(&enc_ctx->ch_layout, &outputLayout);
     enc_ctx->bit_rate = 640000;
     
