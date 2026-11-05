@@ -245,8 +245,9 @@ public class MatroskaExtractor implements Extractor {
   private static final int BLOCK_STATE_DATA = 2;
 
   // Bounds for the early DTS mime scan that peeks ahead right after the Tracks element.
-  private static final int MAX_EARLY_DTS_SCAN_BYTES = 8 * 1024 * 1024;
+  private static final int MAX_EARLY_AUDIO_SCAN_BYTES = 8 * 1024 * 1024;
   private static final int MAX_EARLY_DTS_FRAME_BYTES = 256 * 1024;
+  private static final int MAX_E_AC3_PROBE_BYTES = 8192; // Two syncframes of up to 4096 bytes.
   private static final int MAX_EBML_HEADER_SIZE = 12; // 4-byte id + 8-byte data size.
   private static final int MAX_SEEK_HEAD_FOLLOWS = 4;
 
@@ -600,7 +601,8 @@ public class MatroskaExtractor implements Extractor {
   private boolean pendingFinishTracks;
 
   // Reused scratch for the early DTS peek scan; grows on demand up to the scan budget.
-  private byte[] earlyDtsScanBuffer = new byte[64 * 1024];
+  private byte[] earlyAudioScanBuffer = new byte[64 * 1024];
+  private int earlyAudioScanLength;
 
   // The track corresponding to the current TrackEntry element, or null.
   @Nullable private Track currentTrack;
@@ -845,8 +847,8 @@ public class MatroskaExtractor implements Extractor {
       if (pendingFinishTracks) {
         pendingFinishTracks = false;
         // Input is positioned right after the Tracks element (typically the first cluster),
-        // so the early scan can peek the first DTS block before formats are published.
-        analyzePendingDtsTracksEarly(input);
+        // so the early scan can inspect compressed audio before formats are finalized.
+        analyzePendingAudioTracksEarly(input);
         finishTracksElement();
       }
       if (continueReading && maybeSeekForCues(seekPosition, input.getPosition())) {
@@ -2121,6 +2123,24 @@ public class MatroskaExtractor implements Extractor {
       return finishWriteSampleData();
     }
 
+    if (track.waitingForEac3Analysis) {
+      int length = min(size, MAX_E_AC3_PROBE_BYTES);
+      byte[] sample = new byte[length];
+      try {
+        boolean available = zlibSampleSource != null
+            ? peekSampleBytesFromBuffer(zlibSampleSource, sample, length)
+            : input.peekFully(sample, 0, length, true);
+        if (available && refineEac3Track(track, sample, 0, length)) {
+          track.output.format(checkNotNull(track.format));
+        }
+      } finally {
+        if (zlibSampleSource == null) {
+          input.resetPeekPosition();
+        }
+      }
+      track.waitingForEac3Analysis = false;
+    }
+
     if (track.waitingForDtsAnalysis) {
       checkNotNull(track.format);
       byte[] peekedData = new byte[size];
@@ -2860,7 +2880,7 @@ public class MatroskaExtractor implements Extractor {
     // reading media samples, but the loader is allowed to stop before the first sample
     // when the LoadControl target fills with an unprepared period. Gating here deadlocks
     // startup (observed as "Playback stuck buffering and not loading"). Instead, the early
-    // peek scan in analyzePendingDtsTracksEarly() usually refines the mime before formats
+    // peek scan in analyzePendingAudioTracksEarly() usually refines the mime before formats
     // are published; tracks that escape it publish provisional audio/dts and get a late
     // format update from writeSampleData().
     checkNotNull(extractorOutput).endTracks();
@@ -2868,21 +2888,23 @@ public class MatroskaExtractor implements Extractor {
   }
 
   /**
-   * Best-effort refinement of DTS mime types before track formats are published. The input
+   * Best-effort refinement of compressed audio before track formats are finalized. The input
    * must be positioned right after the Tracks element (typically at the first cluster).
-   * Peeks forward up to {@link #MAX_EARLY_DTS_SCAN_BYTES} looking for the first block of
-   * each DTS track that is still awaiting analysis, and refines its format mime in place.
+   * Peeks forward up to {@link #MAX_EARLY_AUDIO_SCAN_BYTES} looking for the first block of
+   * each audio track awaiting analysis, and refines its format in place.
    * Any failure leaves tracks provisional; the late refinement in writeSampleData() still
    * applies in that case. Never consumes input; always resets the peek position.
    */
-  private void analyzePendingDtsTracksEarly(ExtractorInput input) {
-    if (!hasWaitingDtsTrack()) {
+  private void analyzePendingAudioTracksEarly(ExtractorInput input) {
+    if (!hasWaitingAudioTrack()) {
       return;
     }
+    input.resetPeekPosition();
+    earlyAudioScanLength = 0;
     try {
-      scanElementSequence(input, 0, MAX_EARLY_DTS_SCAN_BYTES);
+      scanElementSequence(input, 0, MAX_EARLY_AUDIO_SCAN_BYTES, 0);
     } catch (IOException | RuntimeException e) {
-      Log.w(TAG, "Early DTS analysis aborted, keeping provisional mime: " + e.getMessage());
+      Log.w(TAG, "Early audio analysis aborted, keeping provisional formats: " + e.getMessage());
     } finally {
       try {
         input.resetPeekPosition();
@@ -2892,9 +2914,12 @@ public class MatroskaExtractor implements Extractor {
     }
   }
 
-  private boolean hasWaitingDtsTrack() {
+  private boolean hasWaitingAudioTrack() {
     for (int i = 0; i < tracks.size(); i++) {
-      if (tracks.valueAt(i).waitingForDtsAnalysis) {
+      Track track = tracks.valueAt(i);
+      if (track.waitingForDtsAnalysis
+          || (track.waitingForEac3Analysis
+              && track.contentCompressionAlgorithm != CONTENT_COMPRESSION_ZLIB)) {
         return true;
       }
     }
@@ -2902,34 +2927,42 @@ public class MatroskaExtractor implements Extractor {
   }
 
   private boolean ensureScanBytes(ExtractorInput input, int length) throws IOException {
-    if (earlyDtsScanBuffer.length < length) {
-      int newSize = earlyDtsScanBuffer.length;
+    if (earlyAudioScanBuffer.length < length) {
+      int newSize = earlyAudioScanBuffer.length;
       while (newSize < length) {
         newSize *= 2;
       }
-      earlyDtsScanBuffer = Arrays.copyOf(earlyDtsScanBuffer, newSize);
+      earlyAudioScanBuffer = Arrays.copyOf(earlyAudioScanBuffer, newSize);
     }
-    return input.peekFully(earlyDtsScanBuffer, 0, length, true);
+    if (length <= earlyAudioScanLength) {
+      return true;
+    }
+    if (!input.peekFully(earlyAudioScanBuffer, earlyAudioScanLength,
+        length - earlyAudioScanLength, true)) {
+      return false;
+    }
+    earlyAudioScanLength = length;
+    return true;
   }
 
   /**
    * Walks a sequence of EBML elements starting at {@code cursor} (a peek offset), descending
-   * into clusters and block groups and analyzing blocks of DTS tracks. Stops at {@code
-   * sequenceEnd}, at the scan budget, or once every DTS track has been analyzed.
+   * into clusters and block groups and analyzing selected audio blocks. Stops at {@code
+   * sequenceEnd}, at the scan budget, or once every pending track has been analyzed.
    */
-  private void scanElementSequence(ExtractorInput input, int cursor, int sequenceEnd)
+  private void scanElementSequence(ExtractorInput input, int cursor, int sequenceEnd, int depth)
       throws IOException {
-    while (cursor < sequenceEnd && hasWaitingDtsTrack()) {
+    while (cursor < sequenceEnd && hasWaitingAudioTrack()) {
       if (!ensureScanBytes(input, cursor + MAX_EBML_HEADER_SIZE)) {
         return;
       }
-      int idLength = ebmlVintLength(earlyDtsScanBuffer[cursor] & 0xFF);
+      int idLength = ebmlVintLength(earlyAudioScanBuffer[cursor] & 0xFF);
       if (idLength == 0 || idLength > 4) {
         return;
       }
       long id = readEbmlElementId(cursor, idLength);
       int sizeOffset = cursor + idLength;
-      int sizeLength = ebmlVintLength(earlyDtsScanBuffer[sizeOffset] & 0xFF);
+      int sizeLength = ebmlVintLength(earlyAudioScanBuffer[sizeOffset] & 0xFF);
       if (sizeLength == 0) {
         return;
       }
@@ -2940,10 +2973,12 @@ public class MatroskaExtractor implements Extractor {
       int dataEnd = dataEndLong > sequenceEnd ? sequenceEnd : (int) dataEndLong;
 
       if (id == ID_CLUSTER || id == ID_BLOCK_GROUP) {
-        scanElementSequence(input, dataStart, dataEnd);
+        if (depth < 2) {
+          scanElementSequence(input, dataStart, dataEnd, depth + 1);
+        }
         cursor = unknownSize ? sequenceEnd : dataEnd;
       } else if (id == ID_SIMPLE_BLOCK || id == ID_BLOCK) {
-        analyzeDtsBlock(input, dataStart, dataEnd);
+        analyzeAudioBlock(input, dataStart, dataEnd);
         if (unknownSize) {
           return;
         }
@@ -2959,36 +2994,36 @@ public class MatroskaExtractor implements Extractor {
 
   /**
    * Parses the header of one SimpleBlock/Block at the given peek range and, if it belongs to
-   * a DTS track awaiting analysis, refines that track's mime type from the frame data.
+   * an audio track awaiting analysis, refines that track's format from the frame data.
    */
-  private void analyzeDtsBlock(ExtractorInput input, int dataStart, int dataEnd)
+  private void analyzeAudioBlock(ExtractorInput input, int dataStart, int dataEnd)
       throws IOException {
     if (dataEnd <= dataStart || !ensureScanBytes(input, dataStart + 8)) {
       return;
     }
-    int trackNumberLength = ebmlVintLength(earlyDtsScanBuffer[dataStart] & 0xFF);
+    int trackNumberLength = ebmlVintLength(earlyAudioScanBuffer[dataStart] & 0xFF);
     if (trackNumberLength == 0) {
       return;
     }
     int trackNumber = (int) readEbmlVintValue(dataStart, trackNumberLength);
     Track track = tracks.get(trackNumber);
-    if (track == null || !track.waitingForDtsAnalysis) {
+    if (track == null || (!track.waitingForDtsAnalysis && !track.waitingForEac3Analysis)) {
       return;
     }
     int pos = dataStart + trackNumberLength;
     if (pos + 3 > dataEnd) {
       return;
     }
-    int flags = earlyDtsScanBuffer[pos + 2] & 0xFF;
+    int flags = earlyAudioScanBuffer[pos + 2] & 0xFF;
     pos += 3; // Skip the 2-byte timecode and the flags byte.
     switch ((flags & 0x06) >> 1) {
       case 1: { // Xiph lacing.
         if (pos >= dataEnd) {
           return;
         }
-        int laces = earlyDtsScanBuffer[pos++] & 0xFF;
+        int laces = earlyAudioScanBuffer[pos++] & 0xFF;
         for (int i = 0; i < laces && pos < dataEnd; i++) {
-          while (pos < dataEnd && (earlyDtsScanBuffer[pos] & 0xFF) == 0xFF) {
+          while (pos < dataEnd && (earlyAudioScanBuffer[pos] & 0xFF) == 0xFF) {
             pos++;
           }
           pos++;
@@ -3003,7 +3038,7 @@ public class MatroskaExtractor implements Extractor {
         if (pos >= dataEnd) {
           return;
         }
-        int firstSizeLength = ebmlVintLength(earlyDtsScanBuffer[pos] & 0xFF);
+        int firstSizeLength = ebmlVintLength(earlyAudioScanBuffer[pos] & 0xFF);
         if (firstSizeLength == 0) {
           return;
         }
@@ -3020,16 +3055,35 @@ public class MatroskaExtractor implements Extractor {
       default:
         break; // No lacing.
     }
-    int frameLength = Math.min(dataEnd - pos, MAX_EARLY_DTS_FRAME_BYTES);
+    if (track.waitingForEac3Analysis) {
+      if (track.contentCompressionAlgorithm != CONTENT_COMPRESSION_ZLIB) {
+        int frameLength = min(dataEnd - pos, MAX_E_AC3_PROBE_BYTES);
+        if (frameLength >= 16 && ensureScanBytes(input, pos + frameLength)) {
+          refineEac3Track(track, earlyAudioScanBuffer, pos, pos + frameLength);
+          track.waitingForEac3Analysis = false;
+        }
+      }
+      return;
+    }
+    int frameLength = min(dataEnd - pos, MAX_EARLY_DTS_FRAME_BYTES);
     if (frameLength < 16 || !ensureScanBytes(input, pos + frameLength)) {
       return;
     }
     String mimeType =
-        DtsUtil.getDtsAudioMimeType(Arrays.copyOfRange(earlyDtsScanBuffer, pos, pos + frameLength));
+        DtsUtil.getDtsAudioMimeType(Arrays.copyOfRange(earlyAudioScanBuffer, pos, pos + frameLength));
     if (mimeType != null && !mimeType.equals(track.format.sampleMimeType)) {
       track.format = track.format.buildUpon().setSampleMimeType(mimeType).build();
     }
     track.waitingForDtsAnalysis = false;
+  }
+
+  private static boolean refineEac3Track(Track track, byte[] data, int offset, int limit) {
+    if (!Eac3Surround.has71Extension(data, offset, limit)) {
+      return false;
+    }
+    track.channelCount = 8;
+    track.format = checkNotNull(track.format).buildUpon().setChannelCount(8).build();
+    return true;
   }
 
   private static int ebmlVintLength(int firstByte) {
@@ -3046,16 +3100,16 @@ public class MatroskaExtractor implements Extractor {
   private long readEbmlElementId(int offset, int length) {
     long value = 0;
     for (int i = 0; i < length; i++) {
-      value = (value << 8) | (earlyDtsScanBuffer[offset + i] & 0xFF);
+      value = (value << 8) | (earlyAudioScanBuffer[offset + i] & 0xFF);
     }
     return value;
   }
 
   /** Reads an EBML variable-size integer value with the marker bit stripped. */
   private long readEbmlVintValue(int offset, int length) {
-    long value = earlyDtsScanBuffer[offset] & (0xFF >>> length);
+    long value = earlyAudioScanBuffer[offset] & (0xFF >>> length);
     for (int i = 1; i < length; i++) {
-      value = (value << 8) | (earlyDtsScanBuffer[offset + i] & 0xFF);
+      value = (value << 8) | (earlyAudioScanBuffer[offset + i] & 0xFF);
     }
     return value;
   }
@@ -3173,6 +3227,7 @@ public class MatroskaExtractor implements Extractor {
     public long seekPreRollNs = 0;
     public @MonotonicNonNull TrueHdSampleRechunker trueHdSampleRechunker;
     public boolean waitingForDtsAnalysis = false;
+    public boolean waitingForEac3Analysis = false;
 
     // Text elements.
     public boolean flagForced;
@@ -3285,6 +3340,8 @@ public class MatroskaExtractor implements Extractor {
           break;
         case CODEC_ID_E_AC3:
           mimeType = MimeTypes.AUDIO_E_AC3;
+          waitingForEac3Analysis = channelCount == 6
+              && !hasContentEncryption && sampleStrippedBytes == null;
           break;
         case CODEC_ID_TRUEHD:
           mimeType = MimeTypes.AUDIO_TRUEHD;

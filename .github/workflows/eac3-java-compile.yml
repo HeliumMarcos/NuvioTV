@@ -87,6 +87,7 @@ jobs:
           ./gradlew :app:testFullDebugUnitTest \
             --tests com.nuvio.tv.data.local.PlayerSettingsTranscodingTest \
             --tests com.nuvio.tv.ui.screens.player.DebugAudioFormatTest \
+            --tests com.nuvio.tv.core.player.dvmkv.Eac3SurroundTest \
             -PuseLocalFfmpegDecoder=true \
             --stacktrace --no-daemon
       - name: Collect and verify experimental full debug APK

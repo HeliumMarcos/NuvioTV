@@ -42,7 +42,7 @@ for channels, layout in [(8, '7.1'), (6, '5.1')]:
             im = sum(v * math.sin(2 * math.pi * f * t / rate) for t, v in enumerate(signal))
             energies.append((re * re + im * im) ** 0.5 / n)
         peak = max(range(channels), key=energies.__getitem__)
-        if peak != c or energies[c] <= 100:
+        if peak != c or not 3000 <= energies[c] <= 5000:
             failures.append((layout, 'missing or incorrect channel', c, peak, energies))
         leakage = max(v for k, v in enumerate(energies) if k != c)
         if energies[c] <= 5 * max(leakage, 1):

@@ -37,6 +37,29 @@ source = replace_once(
 )
 source = replace_once(
     source,
+    """    int snr_offset, snr_incr;
+    int bits_left, mantissa_bits;""",
+    """    int snr_offset;
+    int bits_left;""",
+)
+start = source.index("    /* Try bit allocation at max SNR offset first.")
+end = source.index("    /* Final pass: calculate bap values", start)
+source = source[:start] + """    /* Higher SNR offsets allocate more bits. Keep the highest offset
+     * that fits instead of minimizing it and starving the surround channels. */
+    int low = 0;
+    int high = 1023;
+    while (low < high) {
+        int candidate = low + (high - low + 1) / 2;
+        if (dep_count_mantissa_bits(s, (candidate - 240) * 4) <= bits_left)
+            low = candidate;
+        else
+            high = candidate - 1;
+    }
+    snr_offset = low;
+
+""" + source[end:]
+source = replace_once(
+    source,
     """    s->encode_frame(s, frame->extended_data);
 
     ac3_apply_rematrixing(s);""",
