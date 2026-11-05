@@ -663,23 +663,32 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
       logError("av_samples_set_silence (flush)", silenceResult);
       return AUDIO_DECODER_ERROR_OTHER;
     }
-    int read = av_audio_fifo_read(
+    // Peek first: avcodec_send_frame can return EAGAIN. Do not consume
+    // the final samples until the encoder has accepted the frame.
+    int peeked = av_audio_fifo_peek(
         decoderContext->fifo, (void**)decoderContext->encoder_frame->data, remaining);
-    if (read != remaining) {
-      LOGE("Unable to read remaining encoder FIFO samples.");
+    if (peeked != remaining) {
+      LOGE("Unable to peek remaining encoder FIFO samples.");
       return AUDIO_DECODER_ERROR_OTHER;
     }
     decoderContext->encoder_frame->pts = decoderContext->next_encoder_pts;
     ret = avcodec_send_frame(decoderContext->encoder_context, decoderContext->encoder_frame);
-    if (ret < 0) {
+    if (ret == AVERROR(EAGAIN)) {
+      // Leave the FIFO intact; drain pending encoder packets below and
+      // retry the same final frame on the next call.
+      decoderContext->encoder_final_frame_submitted = false;
+    } else if (ret < 0) {
       logError("avcodec_send_frame (flush)", ret);
       return AUDIO_DECODER_ERROR_OTHER;
+    } else {
+      av_audio_fifo_drain(decoderContext->fifo, remaining);
+      decoderContext->next_encoder_pts += frameSize;
+      decoderContext->encoder_final_frame_submitted = true;
     }
-    decoderContext->next_encoder_pts += frameSize;
-    decoderContext->encoder_final_frame_submitted = true;
   }
   int ret = 0;
-  if (!decoderContext->encoder_flush_started) {
+  if (!decoderContext->encoder_flush_started &&
+      (remaining == 0 || decoderContext->encoder_final_frame_submitted)) {
     ret = avcodec_send_frame(decoderContext->encoder_context, nullptr);
     if (ret >= 0 || ret == AVERROR_EOF) {
       decoderContext->encoder_flush_started = true;
