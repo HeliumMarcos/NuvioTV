@@ -167,6 +167,11 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
               .setSampleRate(sampleRate)
               .build());
     } else {
+      supportsConfiguredOutput = false;
+    }
+    // Match createDecoder(): if compressed output is unavailable, evaluate
+    // the ordinary PCM fallback instead of advertising an unsupported format.
+    if (!transcodeToAc3 || !supportsConfiguredOutput) {
       int outputChannelCount = resolveOutputChannelCount(format.channelCount);
       boolean shouldRequestDownmix = shouldRequestDownmix(format.channelCount, outputChannelCount);
       @C.PcmEncoding int outputEncoding =
