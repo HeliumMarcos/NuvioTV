@@ -470,6 +470,10 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
       !decoderContext->encoder_frame || !decoderContext->encoder_packet) {
     return AUDIO_DECODER_ERROR_OTHER;
   }
+  if (!decoderContext->decoder_drain_completed) {
+    LOGE("Cannot flush encoder before decoder EOF has been confirmed.");
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
   // Only a full upstream drain may call this method. It is intentionally not
   // wired to the current SimpleDecoder EOS path.
   if (decoderContext->encoder_flush_started) {
