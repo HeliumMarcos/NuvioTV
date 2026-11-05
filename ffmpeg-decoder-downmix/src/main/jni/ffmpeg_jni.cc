@@ -134,6 +134,7 @@ struct DecoderContext {
   bool encoder_initialized;
   // Terminal encoder drain must be requested at most once per context.
   bool encoder_flush_started;
+  bool encoder_flush_completed;
   // Final partial FIFO frame may have been accepted before EOF submission.
   bool encoder_final_frame_submitted;
   bool decoder_drain_started;
@@ -633,9 +634,12 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
   }
   // Only a full upstream drain may call this method. It is intentionally not
   // wired to the current SimpleDecoder EOS path.
-  if (decoderContext->encoder_flush_started) {
-    LOGE("Encoder flush was already requested for this context.");
-    return AUDIO_DECODER_ERROR_OTHER;
+  if (decoderContext->encoder_flush_completed) {
+    return decoderContext->pending_packet_count;
+  }
+  // Leave space for packets produced while sending the terminal frame.
+  if (decoderContext->pending_packet_count >= 248) {
+    return decoderContext->pending_packet_count;
   }
   const int frameSize = decoderContext->encoder_context->frame_size;
   const int remaining = av_audio_fifo_size(decoderContext->fifo);
@@ -674,18 +678,25 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
     decoderContext->next_encoder_pts += frameSize;
     decoderContext->encoder_final_frame_submitted = true;
   }
-  int ret = avcodec_send_frame(decoderContext->encoder_context, nullptr);
-  if (ret >= 0 || ret == AVERROR_EOF) {
-    decoderContext->encoder_flush_started = true;
-  }
-  if (ret < 0 && ret != AVERROR_EOF) {
-    logError("avcodec_send_frame (EOF)", ret);
-    return AUDIO_DECODER_ERROR_OTHER;
+  int ret = 0;
+  if (!decoderContext->encoder_flush_started) {
+    ret = avcodec_send_frame(decoderContext->encoder_context, nullptr);
+    if (ret >= 0 || ret == AVERROR_EOF) {
+      decoderContext->encoder_flush_started = true;
+    } else if (ret != AVERROR(EAGAIN)) {
+      logError("avcodec_send_frame (EOF)", ret);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    // EAGAIN requires receiving packets before retrying the terminal frame.
   }
   while (true) {
     ret = avcodec_receive_packet(decoderContext->encoder_context,
                                  decoderContext->encoder_packet);
-    if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+    if (ret == AVERROR_EOF) {
+      decoderContext->encoder_flush_completed = true;
+      break;
+    }
+    if (ret == AVERROR(EAGAIN)) {
       break;
     }
     if (ret < 0) {
@@ -1463,6 +1474,7 @@ void clearResampler(DecoderContext* decoderContext) {
   decoderContext->pending_packet_count = 0;
   decoderContext->encoder_initialized = false;
   decoderContext->encoder_flush_started = false;
+  decoderContext->encoder_flush_completed = false;
   decoderContext->encoder_final_frame_submitted = false;
   decoderContext->decoder_drain_started = false;
   decoderContext->decoder_drain_completed = false;
