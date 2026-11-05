@@ -19,6 +19,16 @@ fun localPath(name: String): String? {
 val ffmpegSourceDir = localPath("FFMPEG_SOURCE_DIR")
 val ffmpegBuildDir = localPath("FFMPEG_BUILD_DIR")
 
+// Never silently compile the experimental decoder without its FFmpeg headers
+// and prebuilt native libraries: the application may otherwise ship a stale AAR.
+require(!ffmpegSourceDir.isNullOrBlank() && !ffmpegBuildDir.isNullOrBlank()) {
+    "Local FFmpeg decoder requires FFMPEG_SOURCE_DIR and FFMPEG_BUILD_DIR. " +
+        "Set both in local.properties or the environment before enabling USE_LOCAL_FFMPEG_DECODER."
+}
+require(file(ffmpegSourceDir).isDirectory && file(ffmpegBuildDir).isDirectory) {
+    "FFMPEG_SOURCE_DIR and FFMPEG_BUILD_DIR must point to existing directories."
+}
+
 android {
     namespace = "androidx.media3.decoder.ffmpeg"
     compileSdk = 36
