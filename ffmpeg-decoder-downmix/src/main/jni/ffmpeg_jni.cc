@@ -546,11 +546,16 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
         av_frame_free(&frame);
         return AUDIO_DECODER_ERROR_OTHER;
       }
-      // A resampler may temporarily produce no samples. This is not a
-      // decoding failure, especially during rate conversion.
+      // Even when no output is predicted, pass the input to swr_convert:
+      // dropping this frame would silently discard decoded audio.
+      // Reserve at least one output sample to allow the resampler to advance.
       if (outSamples == 0) {
+        outSamples = 1;
+      }
+      if (outSamples > INT_MAX / static_cast<int>(sizeof(float))) {
+        LOGE("AC3/EAC3 conversion buffer size overflow.");
         av_frame_free(&frame);
-        continue;
+        return AUDIO_DECODER_ERROR_OTHER;
       }
       uint8_t** converted_data = (uint8_t**)calloc(nb_channels, sizeof(uint8_t*));
       if (!converted_data) {
