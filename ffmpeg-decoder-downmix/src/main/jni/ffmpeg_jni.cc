@@ -413,6 +413,10 @@ const AVCodec* getCodecByName(JNIEnv* env, jstring codecName) {
     return NULL;
   }
   const char* codecNameChars = env->GetStringUTFChars(codecName, NULL);
+  if (!codecNameChars) {
+    LOGE("Failed to access codec name from Java.");
+    return NULL;
+  }
   const AVCodec* codec = avcodec_find_decoder_by_name(codecNameChars);
   env->ReleaseStringUTFChars(codecName, codecNameChars);
   return codec;
