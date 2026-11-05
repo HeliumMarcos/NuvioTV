@@ -99,3 +99,7 @@ The FFmpeg decoder now exposes package-private `getPendingEncodedPacketCount()` 
 ### Partial encoder flush primitive (not wired to EOS)
 
 The native `ffmpegFlushEncodedFrames()` JNI entry point and Java `flushEncodedFramesAfterUpstreamDrain()` bridge now exist. The native routine pads a partial AC-3/E-AC-3 FIFO frame with silence, sends the final frame, sends encoder EOF, and queues packets returned by the encoder. **This is only the encoder stage of EOS draining.** It must not be called until the FFmpeg decoder and `SwrContext` have been drained, otherwise buffered audio is lost. It is not called by the current `SimpleDecoder` EOS path; the remaining work is decoder/resampler drain, independent output scheduling, and emitting all queued access units before Media3 EOS. Encoder flush is terminal for the current encoder context; seek/reset must recreate it before decoding resumes. Validate exact final-frame duration/padding and packet count in native tests before release.
+
+### Encoder flush safety guards
+
+The experimental encoder-finalization entry point now rejects repeated EOF submission for the same encoder context and checks the FFmpeg silence-padding return value before consuming the final FIFO samples. The guard is cleared when `clearResampler()` resets encoder state. This does **not** complete decoder/resampler draining or Media3 EOS integration. Native compilation, unit tests, and playback validation have not yet been performed.
