@@ -98,6 +98,12 @@ struct AudioLimiter {
   float increase;
 };
 
+// Each compressed access unit must retain its own packet and timestamp.
+struct PendingEncodedPacket {
+  AVPacket* packet;
+  PendingEncodedPacket* next;
+};
+
 struct DecoderContext {
   AVCodecContext* codec_context;
   SwrContext* resample_context;
@@ -130,6 +136,9 @@ struct DecoderContext {
   int64_t last_output_pts;
   // Number of complete compressed access units emitted by the last decode.
   int last_output_packet_count;
+  PendingEncodedPacket* pending_packet_head;
+  PendingEncodedPacket* pending_packet_tail;
+  int pending_packet_count;
 };
 
 static jmethodID growOutputBufferMethod;
@@ -700,34 +709,33 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
               decoderContext->last_output_pts = packetDts;
             }
           }
-          // Media3's compressed sink expects one access unit per buffer.
-          // Report the count so the Java decoder can reject an unsupported
-          // multi-packet batch instead of silently misrepresenting it.
-          decoderContext->last_output_packet_count++;
+          // Keep access-unit boundaries intact across decoder calls. The
+          // SimpleDecoder API permits only one output buffer per input.
           int packetSize = decoderContext->encoder_packet->size;
-          // Guard the signed JNI buffer size before computing the required
-          // capacity. Encoded packets can be produced in batches.
-          if (packetSize < 0 || packetSize > INT_MAX - outSize) {
-            LOGE("Invalid encoded audio packet size: %d", packetSize);
+          if (packetSize <= 0 || decoderContext->pending_packet_count >= 256) {
+            LOGE("Invalid encoded packet or pending queue limit reached.");
             av_packet_unref(decoderContext->encoder_packet);
             return AUDIO_DECODER_ERROR_OTHER;
           }
-          if (outSize + packetSize > outputSize) {
-            outputSize = outSize + packetSize;
-            uint8_t* newBase = growBuffer(outputSize);
-            if (!newBase) {
-              LOGE("Failed to grow output buffer during encoding.");
-              av_packet_unref(decoderContext->encoder_packet);
-              return AUDIO_DECODER_ERROR_OTHER;
-            }
-            outputBuffer = newBase + outSize;
+          PendingEncodedPacket* node =
+              static_cast<PendingEncodedPacket*>(calloc(1, sizeof(PendingEncodedPacket)));
+          if (!node) {
+            av_packet_unref(decoderContext->encoder_packet);
+            return AUDIO_DECODER_ERROR_OTHER;
           }
-
-          memcpy(outputBuffer, decoderContext->encoder_packet->data, packetSize);
-          outputBuffer += packetSize;
-          outSize += packetSize;
-
+          node->packet = av_packet_clone(decoderContext->encoder_packet);
           av_packet_unref(decoderContext->encoder_packet);
+          if (!node->packet) {
+            free(node);
+            return AUDIO_DECODER_ERROR_OTHER;
+          }
+          if (decoderContext->pending_packet_tail) {
+            decoderContext->pending_packet_tail->next = node;
+          } else {
+            decoderContext->pending_packet_head = node;
+          }
+          decoderContext->pending_packet_tail = node;
+          decoderContext->pending_packet_count++;
         }
       }
       // Keep the decoder input rate unchanged. The encoded output rate is
@@ -784,6 +792,30 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
       outSize += writtenSize;
       codecContext->sample_rate = sampleRate;
     }
+  }
+  if (decoderContext->transcoding_mode != 0 && decoderContext->pending_packet_head) {
+    PendingEncodedPacket* node = decoderContext->pending_packet_head;
+    const int packetSize = node->packet->size;
+    if (packetSize > outputSize) {
+      uint8_t* newBase = growBuffer(packetSize);
+      if (!newBase) {
+        LOGE("Failed to grow encoded access-unit output buffer.");
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
+      outputBuffer = newBase;
+    }
+    memcpy(outputBuffer, node->packet->data, packetSize);
+    decoderContext->last_output_pts = node->packet->pts != AV_NOPTS_VALUE
+        ? node->packet->pts : node->packet->dts;
+    decoderContext->last_output_packet_count = 1;
+    decoderContext->pending_packet_head = node->next;
+    if (!decoderContext->pending_packet_head) {
+      decoderContext->pending_packet_tail = nullptr;
+    }
+    decoderContext->pending_packet_count--;
+    av_packet_free(&node->packet);
+    free(node);
+    return packetSize;
   }
   return outSize;
 }
@@ -1065,6 +1097,14 @@ void clearResampler(DecoderContext* decoderContext) {
     av_packet_free(&decoderContext->encoder_packet);
     decoderContext->encoder_packet = nullptr;
   }
+  while (decoderContext->pending_packet_head) {
+    PendingEncodedPacket* node = decoderContext->pending_packet_head;
+    decoderContext->pending_packet_head = node->next;
+    av_packet_free(&node->packet);
+    free(node);
+  }
+  decoderContext->pending_packet_tail = nullptr;
+  decoderContext->pending_packet_count = 0;
   decoderContext->encoder_initialized = false;
   decoderContext->next_encoder_pts = 0;
   decoderContext->last_output_pts = AV_NOPTS_VALUE;
