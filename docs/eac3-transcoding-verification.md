@@ -67,7 +67,7 @@ The local module currently specifies NDK `29.0.14206865` and CMake `3.22.1`. Bui
 
 The current JNI `decodePacket()` receives input packets, collects decoded frames, resamples them, and emits compressed packets only when the audio FIFO contains at least one full encoder frame. There is **no demonstrated explicit end-of-stream drain** of the decoder, resampler, FIFO, and encoder. The final fractional encoder frame may therefore remain buffered when the track ends. Do not mark this as resolved.
 
-The Java `FfmpegAudioDecoder.decode()` assigns each returned output buffer the input buffer's `timeUs`. When an encoder buffers multiple decoded frames or returns several encoded packets at once, this does **not** establish per-packet presentation timestamps. Before enabling E-AC-3 in the UI, verify that the Media3 encoded audio sink accepts the framing and timestamps emitted by this decoder.
+The native encoder now receives monotonic sample-based frame PTS (`time_base = 1/48000`, reset with encoder state), but these PTS are **relative to the encoder session**, not yet mapped to media presentation time. The Java `FfmpegAudioDecoder.decode()` still assigns each returned output buffer the input buffer's `timeUs`. When an encoder buffers multiple decoded frames or returns several encoded packets at once, this does **not** establish per-packet presentation timestamps. Before enabling E-AC-3 in the UI, verify that the Media3 encoded audio sink accepts the framing and timestamps emitted by this decoder.
 
 Required implementation review:
 1. Determine how `SimpleDecoder` handles EOS input and whether `decode()` is called for EOS buffers.
