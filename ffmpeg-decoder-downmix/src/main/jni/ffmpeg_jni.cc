@@ -172,6 +172,42 @@ struct GrowOutputBufferCallback {
  * written, or a negative AUDIO_DECODER_ERROR constant value in the case of an
  * error.
  */
+// Pop exactly one compressed access unit. A failed allocation leaves the
+// packet in the queue so it can be retried or freed during decoder reset.
+int dequeueEncodedPacket(DecoderContext* context, uint8_t* outputBuffer,
+                         int outputSize, GrowOutputBufferCallback growBuffer) {
+  PendingEncodedPacket* node = context->pending_packet_head;
+  if (!node) {
+    context->last_output_pts = AV_NOPTS_VALUE;
+    context->last_output_packet_count = 0;
+    return 0;
+  }
+  const int packetSize = node->packet->size;
+  if (packetSize <= 0) {
+    LOGE("Invalid queued compressed packet size.");
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  if (packetSize > outputSize) {
+    outputBuffer = growBuffer(packetSize);
+    if (!outputBuffer) {
+      LOGE("Failed to grow encoded access-unit output buffer.");
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+  }
+  memcpy(outputBuffer, node->packet->data, packetSize);
+  context->last_output_pts = node->packet->pts != AV_NOPTS_VALUE
+      ? node->packet->pts : node->packet->dts;
+  context->last_output_packet_count = 1;
+  context->pending_packet_head = node->next;
+  if (!context->pending_packet_head) {
+    context->pending_packet_tail = nullptr;
+  }
+  context->pending_packet_count--;
+  av_packet_free(&node->packet);
+  free(node);
+  return packetSize;
+}
+
 int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
                  uint8_t* outputBuffer, int outputSize,
                  jint userCenterMixLevelDb,
@@ -781,29 +817,8 @@ int decodePacket(DecoderContext* decoderContext, AVPacket* packet,
       codecContext->sample_rate = sampleRate;
     }
   }
-  if (decoderContext->transcoding_mode != 0 && decoderContext->pending_packet_head) {
-    PendingEncodedPacket* node = decoderContext->pending_packet_head;
-    const int packetSize = node->packet->size;
-    if (packetSize > outputSize) {
-      uint8_t* newBase = growBuffer(packetSize);
-      if (!newBase) {
-        LOGE("Failed to grow encoded access-unit output buffer.");
-        return AUDIO_DECODER_ERROR_OTHER;
-      }
-      outputBuffer = newBase;
-    }
-    memcpy(outputBuffer, node->packet->data, packetSize);
-    decoderContext->last_output_pts = node->packet->pts != AV_NOPTS_VALUE
-        ? node->packet->pts : node->packet->dts;
-    decoderContext->last_output_packet_count = 1;
-    decoderContext->pending_packet_head = node->next;
-    if (!decoderContext->pending_packet_head) {
-      decoderContext->pending_packet_tail = nullptr;
-    }
-    decoderContext->pending_packet_count--;
-    av_packet_free(&node->packet);
-    free(node);
-    return packetSize;
+  if (decoderContext->transcoding_mode != 0) {
+    return dequeueEncodedPacket(decoderContext, outputBuffer, outputSize, growBuffer);
   }
   return outSize;
 }
