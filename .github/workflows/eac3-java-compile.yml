@@ -1,25 +1,24 @@
-name: Experimental E-AC-3 Java compilation
+name: Experimental E-AC-3 Android build
 
 on:
   push:
     branches:
       - feature/eac3-transcoding
-    paths:
-      - '.github/workflows/eac3-java-compile.yml'
-      - 'ffmpeg-decoder-downmix/**'
-      - 'gradle/**'
-      - 'gradle.properties'
-      - 'settings.gradle.kts'
-      - 'build.gradle.kts'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  compile-decoder-java:
+  compile-eac3-arm64:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 110
+    env:
+      FFMPEG_TARGET_ABI: arm64-v8a
+      FFMPEG_BUILD_JOBS: '4'
+      USE_LOCAL_FFMPEG_DECODER: 'true'
+      FFMPEG_SOURCE_DIR: ${{ github.workspace }}/ffmpeg-decoder-downmix/src/main/jni/ffmpeg
+      FFMPEG_BUILD_DIR: ${{ github.workspace }}/ffmpeg-decoder-downmix/src/main/jni/ffmpeg/android-libs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -28,5 +27,28 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Compile experimental FFmpeg decoder Java sources
-        run: ./gradlew :ffmpeg-decoder-downmix:compileDebugJavaWithJavac --stacktrace --no-daemon
+      - name: Install Android build dependencies
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
+      - name: Fetch pinned FFmpeg source
+        run: |
+          git clone --depth 1 --branch n7.1.2 https://github.com/FFmpeg/FFmpeg.git "$FFMPEG_SOURCE_DIR"
+      - name: Compile FFmpeg decoders and AC-3 / E-AC-3 encoders for arm64
+        run: |
+          bash ffmpeg-decoder-downmix/src/main/jni/build_ffmpeg.sh \
+            "$PWD/ffmpeg-decoder-downmix/src/main" \
+            "$ANDROID_HOME/ndk/29.0.14206865" \
+            linux-x86_64 24 \
+            truehd ac3 eac3 dca aac flac alac vorbis opus mp3
+      - name: Compile native JNI and Java decoder (arm64)
+        run: |
+          ./gradlew :ffmpeg-decoder-downmix:assembleDebug \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            --stacktrace --no-daemon
+      - name: Upload compiled decoder AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-eac3-decoder-arm64
+          path: ffmpeg-decoder-downmix/build/outputs/aar/ffmpeg-decoder-downmix-debug.aar
+          if-no-files-found: error
