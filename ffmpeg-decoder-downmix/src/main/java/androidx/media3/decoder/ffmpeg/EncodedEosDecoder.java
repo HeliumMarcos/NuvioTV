@@ -83,7 +83,14 @@ final class EncodedEosDecoder
     if (eosRequested && !eosQueued) {
       advanceDrain();
     }
-    return delegate.dequeueOutputBuffer();
+    @Nullable SimpleDecoderOutputBuffer output = delegate.dequeueOutputBuffer();
+    if (eosRequested && output != null && !output.isEndOfStream()) {
+      // SimpleDecoder counts empty synthetic drain steps as skipped output.
+      // Those are internal scheduler ticks, not media discontinuities.
+      // Do not ask AudioSink to reset its clock for each such tick.
+      output.skippedOutputBufferCount = 0;
+    }
+    return output;
   }
 
   private void advanceDrain() throws FfmpegDecoderException {
