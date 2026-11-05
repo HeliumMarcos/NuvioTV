@@ -432,8 +432,10 @@ import java.util.List;
       drainResamplerAfterDecoderEof();
       return dequeuePendingEncodedPacket(outputBuffer);
     }
-    if (!encodedEndOfStreamFlushStarted) {
-      // The native encoder flush is terminal; never submit EOF twice.
+    // A native encoder flush can return EAGAIN, or pause for queue
+    // backpressure, before receiving confirmed encoder EOF. Retry only
+    // after delivering queued packets to the renderer.
+    if (!isEncoderFlushComplete()) {
       flushEncodedFramesAfterUpstreamDrain();
       encodedEndOfStreamFlushStarted = true;
       return dequeuePendingEncodedPacket(outputBuffer);
@@ -566,6 +568,14 @@ import java.util.List;
   }
 
   private native int ffmpegFlushEncodedFrames(long context);
+
+  private native boolean ffmpegIsEncoderFlushComplete(long context);
+
+  boolean isEncoderFlushComplete() {
+    return ffmpegIsEncoderFlushComplete(nativeContext);
+  }
+
+
 
   private native int ffmpegGetPendingEncodedPacketCount(long context);
 
