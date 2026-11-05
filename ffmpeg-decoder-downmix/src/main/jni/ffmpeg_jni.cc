@@ -130,6 +130,8 @@ struct DecoderContext {
   AVFrame* encoder_frame;
   AVPacket* encoder_packet;
   bool encoder_initialized;
+  // Terminal encoder drain must be requested at most once per context.
+  bool encoder_flush_started;
   // Presentation timestamp of the next encoded frame, in output samples.
   int64_t next_encoder_pts;
   // First packet PTS emitted by the most recent decodePacket call.
@@ -425,6 +427,10 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
   }
   // Only a full upstream drain may call this method. It is intentionally not
   // wired to the current SimpleDecoder EOS path.
+  if (decoderContext->encoder_flush_started) {
+    LOGE("Encoder flush was already requested for this context.");
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
   const int frameSize = decoderContext->encoder_context->frame_size;
   const int remaining = av_audio_fifo_size(decoderContext->fifo);
   if (frameSize <= 0 || remaining < 0 || remaining >= frameSize) {
@@ -439,9 +445,14 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
     }
     // Fixed-frame-size AC-3 encoders require a complete final frame.
     // Padding is silence, and must not expose stale samples from prior frames.
-    av_samples_set_silence(decoderContext->encoder_frame->data, 0, frameSize,
-                           decoderContext->encoder_context->ch_layout.nb_channels,
-                           decoderContext->encoder_context->sample_fmt);
+    int silenceResult = av_samples_set_silence(
+        decoderContext->encoder_frame->data, 0, frameSize,
+        decoderContext->encoder_context->ch_layout.nb_channels,
+        decoderContext->encoder_context->sample_fmt);
+    if (silenceResult < 0) {
+      logError("av_samples_set_silence (flush)", silenceResult);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
     int read = av_audio_fifo_read(
         decoderContext->fifo, (void**)decoderContext->encoder_frame->data, remaining);
     if (read != remaining) {
@@ -457,6 +468,9 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
     decoderContext->next_encoder_pts += frameSize;
   }
   int ret = avcodec_send_frame(decoderContext->encoder_context, nullptr);
+  if (ret >= 0 || ret == AVERROR_EOF) {
+    decoderContext->encoder_flush_started = true;
+  }
   if (ret < 0 && ret != AVERROR_EOF) {
     logError("avcodec_send_frame (EOF)", ret);
     return AUDIO_DECODER_ERROR_OTHER;
@@ -1228,6 +1242,7 @@ void clearResampler(DecoderContext* decoderContext) {
   decoderContext->pending_packet_tail = nullptr;
   decoderContext->pending_packet_count = 0;
   decoderContext->encoder_initialized = false;
+  decoderContext->encoder_flush_started = false;
   decoderContext->next_encoder_pts = 0;
   decoderContext->last_output_pts = AV_NOPTS_VALUE;
   decoderContext->last_output_packet_count = 0;
