@@ -63,4 +63,12 @@ class PlayerSettingsTranscodingTest {
         assertEquals(1, settings.copy(preferEac3Transcoding = true).transcodingInputMask)
         assertEquals(8, settings.copy(preferEac3Transcoding = true).copy(preferEac3Transcoding = false).transcodingInputMask)
     }
+    @Test
+    fun `EAC3 layout negotiation preserves both six and eight source channels`() {
+        val renderer = Class.forName("androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer")
+        val method = renderer.getDeclaredMethod("eac3OutputChannels", Int::class.javaPrimitiveType)
+        method.isAccessible = true
+        assertEquals(6, method.invoke(null, 6))
+        assertEquals(8, method.invoke(null, 8))
+    }
 }

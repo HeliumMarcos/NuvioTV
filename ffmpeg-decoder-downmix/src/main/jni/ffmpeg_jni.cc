@@ -1241,7 +1241,23 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
 
   AVChannelLayout outputLayout = {};
   if (decoderContext->transcoding_mode != 0) {
-    av_channel_layout_default(&outputLayout, 6);
+    if (decoderContext->transcoding_mode == 2) {
+      // Preserve the decoded layout, including 5.1 side/back and discrete 7.1.
+      // The encoder and renderer must agree; never advertise six while emitting eight.
+      if (inputLayout.nb_channels != decoderContext->requested_output_channel_count ||
+          (inputLayout.nb_channels != 6 && inputLayout.nb_channels != 8)) {
+        LOGE("EAC3 channel preservation failed: input=%d requested=%d",
+             inputLayout.nb_channels, decoderContext->requested_output_channel_count);
+        av_channel_layout_uninit(&inputLayout);
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
+      if (av_channel_layout_copy(&outputLayout, &inputLayout) < 0) {
+        av_channel_layout_uninit(&inputLayout);
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
+    } else {
+      av_channel_layout_default(&outputLayout, 6);
+    }
     decoderContext->output_sample_format = AV_SAMPLE_FMT_FLTP;
   } else {
     if (!getOutputChannelLayout(decoderContext, &inputLayout, &outputLayout)) {
@@ -1374,7 +1390,7 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
       av_channel_layout_uninit(&outputLayout);
       return AUDIO_DECODER_ERROR_OTHER;
     }
-    enc_ctx->bit_rate = 640000;
+    enc_ctx->bit_rate = outputLayout.nb_channels == 8 ? 1024000 : 640000;
 
     int ret = avcodec_open2(enc_ctx, encoder, NULL);
     if (ret < 0) {

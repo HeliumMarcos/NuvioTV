@@ -58,7 +58,11 @@ jobs:
           chmod 600 "$EAC3_DEBUG_KEYSTORE_PATH"
       - name: Fetch pinned FFmpeg source
         run: |
-          git clone --depth 1 --branch n7.1.2 https://github.com/FFmpeg/FFmpeg.git "$FFMPEG_SOURCE_DIR"
+          git clone --filter=blob:none --no-checkout https://github.com/FFmpeg/FFmpeg.git "$FFMPEG_SOURCE_DIR"
+          git -C "$FFMPEG_SOURCE_DIR" checkout c352a9ab022b945307f1ad5d35575f695a13c2ca
+          git -C "$FFMPEG_SOURCE_DIR" apply "$GITHUB_WORKSPACE/experiments/eac3-7.1/upstream-21668.patch"
+          python3 experiments/eac3-7.1/fix_base_mapping.py "$FFMPEG_SOURCE_DIR"
+          python3 experiments/eac3-7.1/fix_decoder_mapping.py "$FFMPEG_SOURCE_DIR"
       - name: Compile FFmpeg decoders and AC-3 / E-AC-3 encoders for armeabi-v7a
         run: |
           bash ffmpeg-decoder-downmix/src/main/jni/build_ffmpeg.sh \
