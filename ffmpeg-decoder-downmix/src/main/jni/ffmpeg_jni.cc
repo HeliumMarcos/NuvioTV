@@ -134,6 +134,7 @@ struct DecoderContext {
   bool encoder_flush_started;
   bool decoder_drain_started;
   bool decoder_drain_completed;
+  bool resampler_drain_completed;
   // Presentation timestamp of the next encoded frame, in output samples.
   int64_t next_encoder_pts;
   // First packet PTS emitted by the most recent decodePacket call.
@@ -457,6 +458,113 @@ AUDIO_DECODER_FUNC(jboolean, ffmpegIsDecoderDrainComplete, jlong context) {
       ? JNI_TRUE : JNI_FALSE;
 }
 
+// Consume SwrContext delayed samples into the encoder FIFO. A final encoder
+// flush may run only after this stage has completed. Full frames are encoded
+// through the same frame/packet queue contract as ordinary decoding.
+AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
+  if (!context) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  DecoderContext* dc = (DecoderContext*)context;
+  if (dc->transcoding_mode == 0 || !dc->decoder_drain_completed ||
+      dc->encoder_flush_started || !dc->resample_context ||
+      !dc->encoder_context || !dc->fifo || !dc->encoder_frame ||
+      !dc->encoder_packet) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  if (dc->resampler_drain_completed) {
+    return dc->pending_packet_count;
+  }
+  const int channels = dc->encoder_context->ch_layout.nb_channels;
+  if (channels <= 0) {
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  for (;;) {
+    int capacity = swr_get_out_samples(dc->resample_context, 0);
+    if (capacity < 0 || capacity > INT_MAX / (int)sizeof(float)) {
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    if (capacity == 0) {
+      dc->resampler_drain_completed = true;
+      return dc->pending_packet_count;
+    }
+    uint8_t** samples = nullptr;
+    int linesize = 0;
+    int ret = av_samples_alloc_array_and_samples(
+        &samples, &linesize, channels, capacity, AV_SAMPLE_FMT_FLTP, 0);
+    if (ret < 0) {
+      logError("av_samples_alloc_array_and_samples (drain)", ret);
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    int produced = swr_convert(dc->resample_context, samples, capacity, nullptr, 0);
+    if (produced > 0 && dc->downmix_active) {
+      limitPlanarFloat(&dc->limiter, samples, produced, channels,
+                       dc->encoder_context->sample_rate);
+    }
+    int written = produced > 0
+        ? av_audio_fifo_write(dc->fifo, (void**)samples, produced) : produced;
+    av_freep(&samples[0]);
+    av_freep(&samples);
+    if (produced < 0 || written != produced) {
+      LOGE("Failed to drain resampler samples into encoder FIFO.");
+      return AUDIO_DECODER_ERROR_OTHER;
+    }
+    if (produced == 0) {
+      dc->resampler_drain_completed = true;
+      return dc->pending_packet_count;
+    }
+    const int frameSize = dc->encoder_context->frame_size;
+    while (av_audio_fifo_size(dc->fifo) >= frameSize) {
+      ret = av_frame_make_writable(dc->encoder_frame);
+      if (ret < 0 ||
+          av_audio_fifo_read(dc->fifo, (void**)dc->encoder_frame->data,
+                             frameSize) != frameSize) {
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
+      dc->encoder_frame->pts = dc->next_encoder_pts;
+      ret = avcodec_send_frame(dc->encoder_context, dc->encoder_frame);
+      if (ret < 0) {
+        logError("avcodec_send_frame (resampler drain)", ret);
+        return AUDIO_DECODER_ERROR_OTHER;
+      }
+      dc->next_encoder_pts += frameSize;
+      for (;;) {
+        ret = avcodec_receive_packet(dc->encoder_context, dc->encoder_packet);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+          break;
+        }
+        if (ret < 0) {
+          logError("avcodec_receive_packet (resampler drain)", ret);
+          return AUDIO_DECODER_ERROR_OTHER;
+        }
+        if (dc->encoder_packet->size <= 0 || dc->pending_packet_count >= 256) {
+          av_packet_unref(dc->encoder_packet);
+          return AUDIO_DECODER_ERROR_OTHER;
+        }
+        PendingEncodedPacket* node =
+            static_cast<PendingEncodedPacket*>(calloc(1, sizeof(PendingEncodedPacket)));
+        if (!node) {
+          av_packet_unref(dc->encoder_packet);
+          return AUDIO_DECODER_ERROR_OTHER;
+        }
+        node->packet = av_packet_clone(dc->encoder_packet);
+        av_packet_unref(dc->encoder_packet);
+        if (!node->packet) {
+          free(node);
+          return AUDIO_DECODER_ERROR_OTHER;
+        }
+        if (dc->pending_packet_tail) {
+          dc->pending_packet_tail->next = node;
+        } else {
+          dc->pending_packet_head = node;
+        }
+        dc->pending_packet_tail = node;
+        dc->pending_packet_count++;
+      }
+    }
+  }
+}
+
 // Flush the encoder after upstream decoder and resampler have been drained.
 // This is deliberately separate from Media3 EOS handling: calling it before
 // upstream drain would truncate buffered decoded/resampled audio.
@@ -472,6 +580,10 @@ AUDIO_DECODER_FUNC(jint, ffmpegFlushEncodedFrames, jlong context) {
   }
   if (!decoderContext->decoder_drain_completed) {
     LOGE("Cannot flush encoder before decoder EOF has been confirmed.");
+    return AUDIO_DECODER_ERROR_OTHER;
+  }
+  if (!decoderContext->resampler_drain_completed) {
+    LOGE("Cannot flush encoder before resampler drain completes.");
     return AUDIO_DECODER_ERROR_OTHER;
   }
   // Only a full upstream drain may call this method. It is intentionally not
@@ -1302,6 +1414,7 @@ void clearResampler(DecoderContext* decoderContext) {
   decoderContext->encoder_flush_started = false;
   decoderContext->decoder_drain_started = false;
   decoderContext->decoder_drain_completed = false;
+  decoderContext->resampler_drain_completed = false;
   decoderContext->next_encoder_pts = 0;
   decoderContext->last_output_pts = AV_NOPTS_VALUE;
   decoderContext->last_output_packet_count = 0;
