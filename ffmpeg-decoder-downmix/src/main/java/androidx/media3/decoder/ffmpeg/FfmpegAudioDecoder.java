@@ -243,7 +243,7 @@ import java.util.concurrent.Executor;
         // count or timestamp to the Media3 passthrough sink.
         return new FfmpegDecoderException(
             "Expected exactly one encoded audio access unit, got " + accessUnitCount
-                + ". Encoded packet queueing is not implemented yet.");
+                + ". Native packet scheduling returned an invalid buffer.");
       }
       long packetTimeUs = ffmpegGetOutputTimeUs(nativeContext);
       if (packetTimeUs != Long.MIN_VALUE && encodedTimeAnchorUs != C.TIME_UNSET) {
