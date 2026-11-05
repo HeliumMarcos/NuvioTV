@@ -474,6 +474,21 @@ import java.util.List;
 
   private native boolean ffmpegIsDecoderDrainComplete(long context);
 
+  // Drains delayed SwrContext samples after confirmed native decoder EOF.
+  // Returns queued compressed access units, not a count of PCM samples.
+  int drainResamplerAfterDecoderEof() throws FfmpegDecoderException {
+    if (outputEncoding != C.ENCODING_AC3 && outputEncoding != C.ENCODING_E_AC3) {
+      return 0;
+    }
+    int count = ffmpegDrainResampler(nativeContext);
+    if (count < 0) {
+      throw new FfmpegDecoderException("Failed to drain FFmpeg resampler.");
+    }
+    return count;
+  }
+
+  private native int ffmpegDrainResampler(long context);
+
   // Only call after the upstream FFmpeg decoder and resampler are drained.
   // Returns the number of queued encoded packets, or a negative error.
   int flushEncodedFramesAfterUpstreamDrain() throws FfmpegDecoderException {
