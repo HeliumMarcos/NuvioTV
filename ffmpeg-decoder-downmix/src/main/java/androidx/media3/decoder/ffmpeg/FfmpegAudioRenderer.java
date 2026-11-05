@@ -62,6 +62,8 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   private volatile boolean rendererEnabled;
   private volatile boolean downmixActive;
   private volatile boolean forceOpticalPassthrough;
+  // Experimental; disabled by default until the native E-AC-3 build is validated.
+  private volatile boolean preferEac3Transcoding;
 
   public FfmpegAudioRenderer() {
     this(/* eventHandler= */ null, /* eventListener= */ null);
@@ -151,7 +153,13 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     if (transcodeToAc3) {
       // The native AC-3 transcoder resamples all input rates to 48 kHz.
       int sampleRate = 48000;
-      supportsConfiguredOutput = sinkSupportsFormat(
+      boolean eac3Supported = preferEac3Transcoding && sinkSupportsFormat(
+          new Format.Builder()
+              .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
+              .setChannelCount(6)
+              .setSampleRate(sampleRate)
+              .build());
+      supportsConfiguredOutput = eac3Supported || sinkSupportsFormat(
           new Format.Builder()
               .setSampleMimeType(MimeTypes.AUDIO_AC3)
               .setChannelCount(6)
@@ -195,7 +203,13 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     int nativeOutputChannelCount;
     @Nullable String outputLayoutName;
     if (transcodeToAc3) {
-      outputEncoding = C.ENCODING_AC3;
+      boolean eac3Supported = preferEac3Transcoding && sinkSupportsFormat(
+          new Format.Builder()
+              .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
+              .setChannelCount(6)
+              .setSampleRate(48000)
+              .build());
+      outputEncoding = eac3Supported ? C.ENCODING_E_AC3 : C.ENCODING_AC3;
       nativeOutputChannelCount = 6;
       outputLayoutName = "5.1";
       downmixActive = false;
@@ -228,9 +242,10 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   protected Format getOutputFormat(FfmpegAudioDecoder decoder) {
     checkNotNull(decoder);
     int encoding = decoder.getEncoding();
-    if (encoding == C.ENCODING_AC3) {
+    if (encoding == C.ENCODING_AC3 || encoding == C.ENCODING_E_AC3) {
       return new Format.Builder()
-          .setSampleMimeType(MimeTypes.AUDIO_AC3)
+          .setSampleMimeType(encoding == C.ENCODING_E_AC3
+              ? MimeTypes.AUDIO_E_AC3 : MimeTypes.AUDIO_AC3)
           .setChannelCount(decoder.getChannelCount())
           .setSampleRate(decoder.getSampleRate())
           .build();
@@ -278,6 +293,15 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
 
   public void setForceOpticalPassthrough(boolean enabled) {
     this.forceOpticalPassthrough = enabled;
+  }
+
+  /**
+   * Enables experimental E-AC-3 encoding when the sink supports it.
+   * Disabled by default; the existing AC-3 path remains the fallback.
+   * Set before preparing playback so format negotiation and decoder agree.
+   */
+  public void setPreferEac3Transcoding(boolean enabled) {
+    this.preferEac3Transcoding = enabled;
   }
 
   /** Returns whether this renderer is the active playback path for FFmpeg downmix + center mix. */
