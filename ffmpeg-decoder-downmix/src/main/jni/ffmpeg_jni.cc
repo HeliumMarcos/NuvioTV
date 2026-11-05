@@ -494,6 +494,13 @@ AUDIO_DECODER_FUNC(jint, ffmpegDrainResampler, jlong context) {
     return AUDIO_DECODER_ERROR_OTHER;
   }
   for (;;) {
+    // One 8,192-sample batch plus a partial FIFO frame can produce up to
+    // seven 1,536-sample AC-3/E-AC-3 access units. Leave room in the bounded
+    // queue so the output scheduler can dequeue packets and resume draining
+    // rather than losing a packet to the hard 256-packet limit.
+    if (dc->pending_packet_count >= 248) {
+      return dc->pending_packet_count;
+    }
     int capacity = swr_get_out_samples(dc->resample_context, 0);
     if (capacity < 0) {
       LOGE("Invalid delayed resampler sample count: %d", capacity);
