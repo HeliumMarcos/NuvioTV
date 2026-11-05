@@ -393,7 +393,19 @@ uint8_t* GrowOutputBufferCallback::operator()(int requiredSize) const {
     env->ExceptionDescribe();
     return nullptr;
   }
-  return static_cast<uint8_t*>(env->GetDirectBufferAddress(newOutputData));
+  if (!newOutputData) {
+    LOGE("growOutputBuffer() returned a null buffer");
+    return nullptr;
+  }
+  uint8_t* address = static_cast<uint8_t*>(env->GetDirectBufferAddress(newOutputData));
+  if (!address || env->GetDirectBufferCapacity(newOutputData) < requiredSize) {
+    LOGE("growOutputBuffer() did not provide a sufficiently large direct buffer");
+    address = nullptr;
+  }
+  // CallObjectMethod creates a local reference on every growth. Release it
+  // before the decoder continues processing more input packets.
+  env->DeleteLocalRef(newOutputData);
+  return address;
 }
 
 // Returns the first compressed packet timestamp relative to this encoder
