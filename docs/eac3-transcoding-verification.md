@@ -67,7 +67,7 @@ The local module currently specifies NDK `29.0.14206865` and CMake `3.22.1`. Bui
 
 The current JNI `decodePacket()` receives input packets, collects decoded frames, resamples them, and emits compressed packets only when the audio FIFO contains at least one full encoder frame. There is **no demonstrated explicit end-of-stream drain** of the decoder, resampler, FIFO, and encoder. The final fractional encoder frame may therefore remain buffered when the track ends. Do not mark this as resolved.
 
-The native encoder now receives monotonic sample-based frame PTS (`time_base = 1/48000`, reset with encoder state), but these PTS are **relative to the encoder session**, not yet mapped to media presentation time. The Java `FfmpegAudioDecoder.decode()` still assigns each returned output buffer the input buffer's `timeUs`. When an encoder buffers multiple decoded frames or returns several encoded packets at once, this does **not** establish per-packet presentation timestamps. Before enabling E-AC-3 in the UI, verify that the Media3 encoded audio sink accepts the framing and timestamps emitted by this decoder.
+The native encoder receives monotonic sample-based frame PTS (`time_base = 1/48000`, reset with encoder state). JNI now exposes the first encoded packet PTS in microseconds, and Java anchors it to the first input `timeUs` after reset. **This is a first-packet timestamp implementation, not validated full A/V synchronization**: multiple compressed packets can still be concatenated into one output buffer, and input PTS discontinuities beyond decoder reset are not yet accounted for. When an encoder buffers multiple decoded frames or returns several encoded packets at once, this does **not** establish per-packet presentation timestamps. Before enabling E-AC-3 in the UI, verify that the Media3 encoded audio sink accepts the framing and timestamps emitted by this decoder.
 
 Required implementation review:
 1. Determine how `SimpleDecoder` handles EOS input and whether `decode()` is called for EOS buffers.
@@ -77,3 +77,9 @@ Required implementation review:
 5. Reset counters and discard buffered audio on seek/track changes; never emit pre-seek samples after reset.
 
 These items are intentionally **not claimed as implemented**.
+
+### Verified Media3 EOS constraint (upstream `SimpleDecoder.java`)
+
+The upstream `androidx.media3.decoder.SimpleDecoder` worker checks `inputBuffer.isEndOfStream()` **before** calling the subclass's `decode(...)`. For EOS it flags an output buffer directly; the subclass never receives the EOS input. `queueInputBuffer()` and `flush()` are `final`. Therefore adding an EOS branch to `FfmpegAudioDecoder.decode()` would be unreachable and cannot drain the native encoder. A complete solution requires a deliberate decoder/renderer lifecycle change (e.g. a dedicated drain-capable decoder implementation that can emit remaining output buffers before EOS), not a JNI-only flush method. Do not ship a partial native drain that is never invoked. Inspect Media3 version used by this project before changing that lifecycle.
+
+The timestamp bridge is also subject to the multi-packet output framing limitation. Before enabling the feature, implement separate encoded access units and their corresponding timestamps, and test seek, discontinuity, and EOS behavior.
