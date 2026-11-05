@@ -499,6 +499,13 @@ import java.util.concurrent.Executor;
     return pendingEncodedPacketsSnapshot;
   }
 
+  // Renderer-thread invalidation after a seek: the old native queue will be
+  // destroyed by SimpleDecoder's next reset, so never schedule stale tokens.
+  void invalidatePendingEncodedPackets() {
+    pendingEncodedPacketsSnapshot = 0;
+    syntheticDrainStepFinished = false;
+  }
+
   private void notifyDrainWakeup() {
     @Nullable Decoder.Callback callback = drainWakeupCallback;
     @Nullable Executor executor = drainWakeupExecutor;
