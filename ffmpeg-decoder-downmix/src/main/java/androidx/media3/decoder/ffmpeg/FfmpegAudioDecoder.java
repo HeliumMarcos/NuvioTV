@@ -64,6 +64,8 @@ import java.util.List;
   private boolean hasOutputFormat;
   private volatile int channelCount;
   private volatile int sampleRate;
+  // First input timestamp anchors native encoder-relative PTS to media time.
+  private long encodedTimeAnchorUs = C.TIME_UNSET;
 
   public FfmpegAudioDecoder(
       Format format,
@@ -134,6 +136,11 @@ import java.util.List;
       // The native encoder/resampler may have been recreated after seeking.
       // Query the resulting output format again on the next non-empty buffer.
       hasOutputFormat = false;
+      encodedTimeAnchorUs = C.TIME_UNSET;
+    }
+    if ((outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3)
+        && encodedTimeAnchorUs == C.TIME_UNSET) {
+      encodedTimeAnchorUs = inputBuffer.timeUs;
     }
     ByteBuffer inputData = Util.castNonNull(inputBuffer.data);
     int inputSize = inputData.limit();
@@ -180,6 +187,12 @@ import java.util.List;
     outputData = checkNotNull(outputBuffer.data);
     outputData.position(0);
     outputData.limit(result);
+    if (outputEncoding == C.ENCODING_AC3 || outputEncoding == C.ENCODING_E_AC3) {
+      long packetTimeUs = ffmpegGetOutputTimeUs(nativeContext);
+      if (packetTimeUs != Long.MIN_VALUE && encodedTimeAnchorUs != C.TIME_UNSET) {
+        outputBuffer.timeUs = encodedTimeAnchorUs + packetTimeUs;
+      }
+    }
     return null;
   }
 
@@ -364,6 +377,8 @@ import java.util.List;
       int userCenterMixLevelDb,
       boolean downmixNormalizationEnabled,
       float lfeMixLevel);
+
+  private native long ffmpegGetOutputTimeUs(long context);
 
   private native int ffmpegGetChannelCount(long context);
 
