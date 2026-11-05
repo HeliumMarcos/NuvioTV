@@ -70,6 +70,9 @@ final class EncodedEosDecoder
   public void queueInputBuffer(DecoderInputBuffer inputBuffer) throws FfmpegDecoderException {
     inputOutstanding = false;
     if (!inputBuffer.isEndOfStream()) {
+      if (eosRequested) {
+        throw new IllegalStateException("Cannot queue media after EOS");
+      }
       delegate.queueInputBuffer(inputBuffer);
       return;
     }
