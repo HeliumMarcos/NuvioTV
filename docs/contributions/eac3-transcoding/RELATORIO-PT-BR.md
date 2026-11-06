@@ -197,7 +197,7 @@ O equipamento descrito pelo usuário em seu [comentário anterior na issue #2398
 | Canais, passagem direta e demais correções anteriores | Usuário informou comportamento correto após os testes |
 | MKV E-AC-3 JOC | Usuário confirmou Atmos correto no player e nas estatísticas |
 | Build Android anterior com JOC corrigido | [42147132779](https://github.com/HeliumMarcos/NuvioTV/actions/runs/42147132779), concluído e instalado |
-| Build Android da correção TrueHD | [42151624130](https://github.com/HeliumMarcos/NuvioTV/actions/runs/42151624130); resultado registrado no arquivo de entrega |
+| Build Android da correção TrueHD | [42151624130](https://github.com/HeliumMarcos/NuvioTV/actions/runs/42151624130), concluído com sucesso; APK e testes de configurações, estatísticas e parsers E-AC-3/TrueHD passaram; [dados da entrega e instalação](ENTREGA-TRUEHD-ATMOS.md) |
 | Reconhecimento TrueHD Atmos na TV com APK atual | Depende de validação após atualização; o teste isolado não substitui esse teste |
 | Preservação TrueHD Atmos → E-AC-3 Atmos | Não implementada; pesquisa futura em branch separada |
 | Todos os ABIs e receptores | Não validados; APK desta etapa é ARMv7 |
