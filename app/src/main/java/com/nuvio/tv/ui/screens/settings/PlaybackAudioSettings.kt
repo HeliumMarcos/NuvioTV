@@ -19,6 +19,7 @@ import com.nuvio.tv.data.local.SurroundChannelTarget
 import com.nuvio.tv.data.local.SurroundFormatMode
 import com.nuvio.tv.data.local.displayName
 import com.nuvio.tv.ui.screens.player.PlayerTunnelAvSyncPolicy
+import com.nuvio.tv.ui.screens.player.Eac3TranscodingSupport
 
 internal fun rememberedTunnelStallClasses(settings: PlayerSettings): Set<String> =
     settings.tunnelDeadAudioClasses + PlayerTunnelAvSyncPolicy.deadAudioClasses
@@ -194,16 +195,38 @@ internal fun PlaybackAudioSection(
                 onToggle = { onUpdate { setAllowDtshdPassthrough(!settings.allowDtshdPassthrough) } },
                 enabled = switchesEnabled
             )
-            SettingsToggleRow(
-                title = stringResource(R.string.audio_surround_transcode_denied),
-                subtitle = stringResource(R.string.audio_surround_transcode_denied_sub),
-                checked = settings.deniedCodecHandling == DeniedCodecHandling.TRANSCODE_AC3 && !deviceOnly,
-                onToggle = {
-                    val next = settings.deniedCodecHandling != DeniedCodecHandling.TRANSCODE_AC3
-                    onUpdate { setTranscodeDeniedToAc3(next) }
-                },
-                enabled = switchesEnabled
+            SettingsActionRow(
+                title = stringResource(R.string.audio_transcoding_handling),
+                subtitle = stringResource(R.string.audio_transcoding_handling_sub),
+                value = deniedCodecHandlingLabel(settings.deniedCodecHandling),
+                enabled = switchesEnabled,
+                onClick = { onOpenDialog(PlaybackDialog.DENIED_CODEC_HANDLING) }
             )
+            if (settings.deniedCodecHandling != DeniedCodecHandling.DECODE_PCM) {
+                val eac3 = settings.deniedCodecHandling == DeniedCodecHandling.TRANSCODE_EAC3
+                val mask = if (eac3) settings.eac3TranscodingInputMask else settings.ac3TranscodingInputMask
+                SettingsNote(text = stringResource(R.string.audio_transcoding_inputs_sub))
+                val sources = listOf(1 to "TrueHD", 2 to "DTS", 4 to "DTS-HD") +
+                    if (eac3) emptyList() else listOf(8 to "DDP (E-AC-3)")
+                sources.forEach { (flag, label) ->
+                    SettingsToggleRow(
+                        title = label,
+                        subtitle = null,
+                        checked = mask and flag != 0,
+                        enabled = switchesEnabled,
+                        onToggle = { onUpdate { setTranscodingInputEnabled(eac3, flag, mask and flag == 0) } }
+                    )
+                }
+                if (eac3) {
+                    SettingsToggleRow(
+                        title = stringResource(R.string.audio_eac3_force_five_one),
+                        subtitle = stringResource(R.string.audio_eac3_force_five_one_sub),
+                        checked = settings.forceEac3FiveOne,
+                        enabled = switchesEnabled && Eac3TranscodingSupport.available,
+                        onToggle = { onUpdate { setForceEac3FiveOne(!settings.forceEac3FiveOne) } }
+                    )
+                }
+            }
         }
 
         SettingsActionRow(
@@ -320,6 +343,20 @@ internal fun AudioSettingsDialogs(
                 onDismiss()
             },
             onDismiss = onDismiss
+        )
+        PlaybackDialog.DENIED_CODEC_HANDLING -> SettingsSingleChoiceDialog(
+            title = stringResource(R.string.audio_transcoding_handling),
+            options = DeniedCodecHandling.entries.filter {
+                it != DeniedCodecHandling.TRANSCODE_EAC3 || Eac3TranscodingSupport.available
+            }.map { SettingsPickerOption(it, deniedCodecHandlingLabel(it)) },
+            selectedValue = settings.deniedCodecHandling,
+            onOptionSelected = { handling ->
+                onUpdate { setDeniedCodecHandling(handling) }
+                onDismiss()
+            },
+            onDismiss = onDismiss,
+            width = 460.dp,
+            maxHeight = 320.dp
         )
         PlaybackDialog.SURROUND_FORMAT_MODE -> SurroundFormatModeDialog(
             selectedMode = settings.surroundFormatMode,
@@ -490,4 +527,11 @@ private fun SurroundChannelTargetDialog(
         width = 460.dp,
         maxHeight = 420.dp
     )
+}
+
+@Composable
+private fun deniedCodecHandlingLabel(handling: DeniedCodecHandling): String = when (handling) {
+    DeniedCodecHandling.DECODE_PCM -> "PCM"
+    DeniedCodecHandling.TRANSCODE_AC3 -> "Dolby Digital (AC-3)"
+    DeniedCodecHandling.TRANSCODE_EAC3 -> "Dolby Digital Plus (E-AC-3)"
 }

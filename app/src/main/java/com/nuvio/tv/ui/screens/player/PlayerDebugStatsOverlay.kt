@@ -72,7 +72,9 @@ internal data class PlayerSnapshot(
     val audioChannelCount: Int,
     val audioUnderruns: Int,
     val nativeMemoryBytes: Long? = null,
-    val audioRouting: AudioRoutingSnapshot? = null
+    val audioRouting: AudioRoutingSnapshot? = null,
+    val inputAudioDescription: String? = null,
+    val outputAudioDescription: DebugAudioOutput? = null
 )
 
 @OptIn(UnstableApi::class)
@@ -122,7 +124,9 @@ internal fun PlayerDebugStatsOverlay(
                         ?: -1,
                     audioUnderruns = PlayerAudioUnderrunCounter.current(),
                     nativeMemoryBytes = viewModel.getPlayerNativeMemoryBytes(),
-                    audioRouting = viewModel.getAudioRoutingSnapshot()
+                    audioRouting = viewModel.getAudioRoutingSnapshot(),
+                    inputAudioDescription = DebugAudioFormat.describeInput(it.audioFormat),
+                    outputAudioDescription = viewModel.getDebugAudioOutput()
                 )
             }
             stats = withContext(Dispatchers.IO) { sampler.sample(snapshot) }
@@ -208,6 +212,11 @@ private class DebugStatsSampler(context: Context) {
         add(bitrateStat(snapshot))
         add(networkStat())
         add(audioStat(snapshot))
+        snapshot?.inputAudioDescription?.let { add(DebugStat("Input", it)) }
+        snapshot?.outputAudioDescription?.let {
+            add(DebugStat("Output", it.format))
+            it.route?.let { route -> add(DebugStat("Route", route)) }
+        }
         add(audioRouteStat(snapshot))
         add(audioBitrateStat(snapshot))
         add(underrunStat(snapshot))

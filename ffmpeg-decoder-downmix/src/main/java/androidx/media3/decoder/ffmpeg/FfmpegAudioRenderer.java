@@ -35,6 +35,9 @@ import androidx.media3.common.util.TraceUtil;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.util.Util;
 import androidx.media3.decoder.CryptoConfig;
+import androidx.media3.decoder.Decoder;
+import androidx.media3.decoder.DecoderInputBuffer;
+import androidx.media3.decoder.SimpleDecoderOutputBuffer;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.audio.AudioRendererEventListener;
 import androidx.media3.exoplayer.audio.AudioSink;
@@ -46,7 +49,7 @@ import java.util.Set;
 
 /** Decodes and renders audio using FFmpeg. */
 @UnstableApi
-public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioDecoder> {
+public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException>> {
 
   private static final String TAG = "FfmpegAudioRenderer";
 
@@ -64,6 +67,8 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   private volatile boolean rendererEnabled;
   private volatile boolean downmixActive;
   private volatile boolean forceOpticalPassthrough;
+  private volatile boolean preferEac3Transcoding;
+  private volatile boolean forceEac3FiveOne;
   private volatile Set<String> deniedTranscodeMimes = Collections.emptySet();
 
   public FfmpegAudioRenderer() {
@@ -147,7 +152,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     }
     boolean supportsConfiguredOutput;
     if (transcodeToAc3) {
-      supportsConfiguredOutput = sinkSupportsFormat(ac3OutputFormat(format));
+      supportsConfiguredOutput = sinkSupportsFormat(compressedOutputFormat(format));
     } else {
       int outputChannelCount = resolveOutputChannelCount(format.channelCount);
       boolean shouldRequestDownmix = shouldRequestDownmix(format.channelCount, outputChannelCount);
@@ -170,7 +175,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
   }
 
   @Override
-  protected FfmpegAudioDecoder createDecoder(Format format, @Nullable CryptoConfig cryptoConfig)
+  protected Decoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException> createDecoder(Format format, @Nullable CryptoConfig cryptoConfig)
       throws FfmpegDecoderException {
     TraceUtil.beginSection("createFfmpegAudioDecoder");
     String mimeType = checkNotNull(format.sampleMimeType);
@@ -181,9 +186,10 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     int nativeOutputChannelCount;
     @Nullable String outputLayoutName;
     if (transcodeToAc3) {
-      outputEncoding = C.ENCODING_AC3;
-      nativeOutputChannelCount = 6;
-      outputLayoutName = "5.1";
+      boolean eac3 = preferEac3Transcoding && !forceOpticalPassthrough;
+      outputEncoding = eac3 ? C.ENCODING_E_AC3 : C.ENCODING_AC3;
+      nativeOutputChannelCount = eac3 ? eac3OutputChannels(format.channelCount, forceEac3FiveOne) : 6;
+      outputLayoutName = eac3 ? (forceEac3FiveOne ? "5.1(side)" : null) : "5.1";
       downmixActive = false;
     } else {
       int outputChannelCount = resolveOutputChannelCount(format.channelCount);
@@ -206,24 +212,26 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     decoder.setDownmixNormalizationEnabled(downmixNormalizationEnabled);
     activeDecoder = decoder;
     TraceUtil.endSection();
-    return decoder;
+    return decoder.isCompressedOutput() ? new EncodedEosDecoder(decoder) : decoder;
   }
 
   @Override
-  protected Format getOutputFormat(FfmpegAudioDecoder decoder) {
+  protected Format getOutputFormat(Decoder<DecoderInputBuffer, SimpleDecoderOutputBuffer, FfmpegDecoderException> decoder) {
     checkNotNull(decoder);
-    int encoding = decoder.getEncoding();
-    if (encoding == C.ENCODING_AC3) {
+    FfmpegAudioDecoder underlying = decoder instanceof EncodedEosDecoder
+        ? ((EncodedEosDecoder) decoder).getUnderlyingDecoder() : (FfmpegAudioDecoder) decoder;
+    int encoding = underlying.getEncoding();
+    if (encoding == C.ENCODING_AC3 || encoding == C.ENCODING_E_AC3) {
       return new Format.Builder()
-          .setSampleMimeType(MimeTypes.AUDIO_AC3)
-          .setChannelCount(decoder.getChannelCount())
-          .setSampleRate(decoder.getSampleRate())
+          .setSampleMimeType(encoding == C.ENCODING_E_AC3 ? MimeTypes.AUDIO_E_AC3 : MimeTypes.AUDIO_AC3)
+          .setChannelCount(underlying.getChannelCount())
+          .setSampleRate(underlying.getSampleRate())
           .build();
     }
     return new Format.Builder()
         .setSampleMimeType(MimeTypes.AUDIO_RAW)
-        .setChannelCount(decoder.getChannelCount())
-        .setSampleRate(decoder.getSampleRate())
+        .setChannelCount(underlying.getChannelCount())
+        .setSampleRate(underlying.getSampleRate())
         .setPcmEncoding(encoding)
         .build();
   }
@@ -293,6 +301,9 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     if (MimeTypes.AUDIO_AC3.equals(mimeType)) {
       return false;
     }
+    if (preferEac3Transcoding && !forceOpticalPassthrough && !canEncodeEac3(format.channelCount)) {
+      return false;
+    }
     boolean isDtsOrTrueHd = MimeTypes.AUDIO_DTS.equals(mimeType)
         || MimeTypes.AUDIO_DTS_HD.equals(mimeType)
         || MimeTypes.AUDIO_TRUEHD.equals(mimeType);
@@ -303,7 +314,9 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     if (forceOpticalPassthrough) {
       return true;
     }
-    return deniedTranscodeMimes.contains(mimeType) && sinkSupportsFormat(ac3OutputFormat(format));
+    if (preferEac3Transcoding && (MimeTypes.AUDIO_E_AC3.equals(mimeType)
+        || MimeTypes.AUDIO_E_AC3_JOC.equals(mimeType))) return false;
+    return deniedTranscodeMimes.contains(mimeType) && sinkSupportsFormat(compressedOutputFormat(format));
   }
 
   public static int ac3SampleRate(int inputSampleRate) {
@@ -331,11 +344,25 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioD
     return frameSamples * 1_000_000L / sampleRate;
   }
 
-  private static Format ac3OutputFormat(Format inputFormat) {
+  public void setPreferEac3Transcoding(boolean enabled) { preferEac3Transcoding = enabled; }
+  public void setForceEac3FiveOne(boolean enabled) { forceEac3FiveOne = enabled; }
+
+  public static boolean canEncodeEac3(int channels) { return channels == 6 || channels == 8; }
+
+  public static int eac3OutputChannels(int inputChannels, boolean forceFiveOne) {
+    return forceFiveOne && inputChannels == 8 ? 6 : inputChannels;
+  }
+
+  public boolean isTranscodingToEac3() {
+    return rendererEnabled && activeDecoder != null && activeDecoder.getEncoding() == C.ENCODING_E_AC3;
+  }
+
+  private Format compressedOutputFormat(Format inputFormat) {
+    boolean eac3 = preferEac3Transcoding && !forceOpticalPassthrough;
     return new Format.Builder()
-        .setSampleMimeType(MimeTypes.AUDIO_AC3)
-        .setChannelCount(6)
-        .setSampleRate(ac3SampleRate(inputFormat.sampleRate))
+        .setSampleMimeType(eac3 ? MimeTypes.AUDIO_E_AC3 : MimeTypes.AUDIO_AC3)
+        .setChannelCount(eac3 ? eac3OutputChannels(inputFormat.channelCount, forceEac3FiveOne) : 6)
+        .setSampleRate(eac3 ? 48000 : ac3SampleRate(inputFormat.sampleRate))
         .build();
   }
 

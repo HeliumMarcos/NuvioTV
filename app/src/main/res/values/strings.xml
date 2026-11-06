@@ -3441,4 +3441,9 @@
     <string name="autosync_label_synced">Auto synced</string>
     <string name="stream_resume_from_time">Resume from %1$s</string>
     <string name="stream_resume_from_percent">Resume from %1$d%%</string>
+    <string name="audio_transcoding_handling">Decode or transcode denied formats</string>
+    <string name="audio_transcoding_handling_sub">Choose PCM, Dolby Digital or Dolby Digital Plus for formats disabled above. Native passthrough remains available for allowed formats.</string>
+    <string name="audio_transcoding_inputs_sub">Only selected sources that are disabled for passthrough above will be transcoded. Other sources use normal playback negotiation.</string>
+    <string name="audio_eac3_force_five_one">Limit Dolby Digital Plus to 5.1</string>
+    <string name="audio_eac3_force_five_one_sub">Off preserves 5.1 and 7.1 sources. On downmixes 7.1 sources to 5.1.</string>
 </resources>

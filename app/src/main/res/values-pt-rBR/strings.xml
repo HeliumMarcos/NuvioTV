@@ -3367,4 +3367,9 @@
     <string name="autosync_toast_failed_no_reference">Falha na sincronização: este vídeo não tem legendas internas para comparar.</string>
     <string name="autosync_toast_failed_unsupported">Falha na sincronização: este formato de legenda não é aceito.</string>
     <string name="autosync_label_synced">Sincronizado automaticamente</string>
+    <string name="audio_transcoding_handling">Decodificar ou transcodificar formatos bloqueados</string>
+    <string name="audio_transcoding_handling_sub">Escolha PCM, Dolby Digital ou Dolby Digital Plus para os formatos desativados acima. A passagem direta permanece disponível para formatos permitidos.</string>
+    <string name="audio_transcoding_inputs_sub">Somente as entradas selecionadas e desativadas para passagem direta acima serão transcodificadas. As demais seguem a negociação normal do reprodutor.</string>
+    <string name="audio_eac3_force_five_one">Limitar Dolby Digital Plus a 5.1</string>
+    <string name="audio_eac3_force_five_one_sub">Desativado preserva fontes 5.1 e 7.1. Ativado reduz fontes 7.1 para 5.1.</string>
 </resources>

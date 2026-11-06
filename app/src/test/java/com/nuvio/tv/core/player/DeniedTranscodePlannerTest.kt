@@ -8,6 +8,45 @@ import org.junit.Test
 
 class DeniedTranscodePlannerTest {
 
+    @Test
+    fun eac3TargetUsesItsOwnSupportAndOnlySelectedLosslessInputs() {
+        val policy = AudioPassthroughPolicy(allowAc3 = false, allowTrueHd = false, allowDts = false, allowDtsHd = false)
+        assertEquals(setOf(MimeTypes.AUDIO_TRUEHD), DeniedTranscodePlanner.effectiveTranscodeMimes(
+            policy, true, false, MimeTypes.AUDIO_E_AC3, 1))
+    }
+
+    @Test
+    fun eac3TargetDoesNotRecodifyNativeDdpOrUnselectedSources() {
+        val policy = AudioPassthroughPolicy(allowTrueHd = false, allowDts = false,
+            allowDtsHd = false, learnedDeniedGroups = setOf(Group.EAC3))
+        assertTrue(DeniedTranscodePlanner.effectiveTranscodeMimes(
+            policy, true, false, MimeTypes.AUDIO_E_AC3, 15).isEmpty())
+        assertEquals(setOf(MimeTypes.AUDIO_DTS_HD), DeniedTranscodePlanner.effectiveTranscodeMimes(
+            policy.copy(learnedDeniedGroups = emptySet()), true, false, MimeTypes.AUDIO_E_AC3, 4))
+    }
+
+    @Test
+    fun noSelectedInputsMeansNoTranscoding() {
+        assertTrue(DeniedTranscodePlanner.effectiveTranscodeMimes(
+            AudioPassthroughPolicy(allowTrueHd = false), true, false, MimeTypes.AUDIO_AC3, 0).isEmpty())
+    }
+
+    @Test
+    fun automaticModeIgnoresManualEac3MasksAndForceFiveOne() {
+        assertEquals(DeniedTranscodePlanner.Request(MimeTypes.AUDIO_AC3, 15, false),
+            DeniedTranscodePlanner.resolvePreferences(false, true, 0, 1, true))
+        assertEquals(DeniedTranscodePlanner.Request(MimeTypes.AUDIO_AC3, 15, false),
+            DeniedTranscodePlanner.resolvePreferences(false, false, 0, 0, true))
+    }
+
+    @Test
+    fun manualPreferencesKeepSelectionsIndependentForEachDestination() {
+        assertEquals(DeniedTranscodePlanner.Request(MimeTypes.AUDIO_E_AC3, 4, true),
+            DeniedTranscodePlanner.resolvePreferences(true, true, 8, 4, true))
+        assertEquals(DeniedTranscodePlanner.Request(MimeTypes.AUDIO_AC3, 8, false),
+            DeniedTranscodePlanner.resolvePreferences(true, false, 8, 4, false))
+    }
+
     private fun plan(
         policy: AudioPassthroughPolicy,
         transcodeDeniedToAc3: Boolean = true,

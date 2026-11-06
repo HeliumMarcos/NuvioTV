@@ -150,6 +150,7 @@ private fun PlayerRuntimeController.disposeExoPlayerBeforeRebuild() {
     }
     _exoPlayer = null
     playbackSpeedAwareAudioSink = null
+    debugAudioTrack = null
 }
 
 private fun PlayerRuntimeController.applyPendingSeeksAtReady(player: ExoPlayer) {
@@ -1041,6 +1042,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                 forceOpticalPassthrough = isForcePassthroughActive,
                 useSystemPassthrough = playerSettings.useSystemPassthrough,
                 deniedTranscodeMimes = deniedTranscodeMimes,
+                transcodingSettings = playerSettings,
+                onDebugAudioTrackCreated = { debugAudioTrack = it },
                 bluetoothForcePcm = isBluetoothAudioOutput,
                 playbackSpeedProvider = { _uiState.value.playbackSpeed },
                 initialForcePcm = hasTriedAudioPcmFallback || isBluetoothAudioOutput,
@@ -1056,7 +1059,8 @@ internal fun PlayerRuntimeController.initializePlayer(
                         audioOutputChannels = surroundAudioOutputChannels,
                         downmixNormalizationEnabled = !playerSettings.maintainOriginalAudioOnDownmix,
                         forceOpticalPassthrough = isForcePassthroughActive,
-                        deniedTranscodeMimes = deniedTranscodeMimes
+                        deniedTranscodeMimes = deniedTranscodeMimes,
+                        transcodingSettings = playerSettings
                     )
                     applyCenterMixLevel(_uiState.value.centerMixLevelDb)
                     updateAudioControlAvailability()
@@ -2314,6 +2318,8 @@ private class SubtitleOffsetRenderersFactory(
     private val forceOpticalPassthrough: Boolean,
     private val useSystemPassthrough: Boolean,
     private val deniedTranscodeMimes: Set<String> = emptySet(),
+    private val transcodingSettings: PlayerSettings? = null,
+    private val onDebugAudioTrackCreated: (DebugAudioTrackBinding) -> Unit = {},
     private val bluetoothForcePcm: Boolean = false,
     private val playbackSpeedProvider: () -> Float,
     private val initialForcePcm: Boolean = false,
@@ -2407,6 +2413,19 @@ private class SubtitleOffsetRenderersFactory(
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
             .setAudioProcessors(arrayOf(gainAudioProcessor))
             .setAudioTrackBufferSizeProvider(cappedPassthroughBufferSizeProvider)
+        builder.setAudioTrackProvider(object : DefaultAudioSink.AudioTrackProvider {
+            private val delegate = DefaultAudioSink.AudioTrackProvider.DEFAULT
+            override fun getAudioTrack(
+                config: AudioSink.AudioTrackConfig,
+                audioAttributes: androidx.media3.common.AudioAttributes,
+                audioSessionId: Int,
+                context: Context?
+            ): android.media.AudioTrack = delegate.getAudioTrack(config, audioAttributes, audioSessionId, context).also {
+                onDebugAudioTrackCreated(DebugAudioTrackBinding(it, config))
+            }
+            override fun getAudioTrackChannelConfig(channelConfig: Int): Int =
+                delegate.getAudioTrackChannelConfig(channelConfig)
+        })
         val baseAudioSink = builder.build()
         var speedAwareSink: PlaybackSpeedAwareAudioSink? = null
         val iecAudioSink = IecPassthroughAudioSink(
@@ -2506,7 +2525,8 @@ private class SubtitleOffsetRenderersFactory(
                 audioOutputChannels = audioOutputChannels,
                 downmixNormalizationEnabled = downmixNormalizationEnabled,
                 forceOpticalPassthrough = forceOpticalPassthrough,
-                deniedTranscodeMimes = deniedTranscodeMimes
+                deniedTranscodeMimes = deniedTranscodeMimes,
+                transcodingSettings = transcodingSettings
             )
         }
         onFfmpegAudioRendererChanged(ffmpegRenderers.firstOrNull())
@@ -2517,10 +2537,17 @@ internal fun FfmpegAudioRenderer.applyDownmixSettings(
     audioOutputChannels: com.nuvio.tv.data.local.AudioOutputChannels,
     downmixNormalizationEnabled: Boolean,
     forceOpticalPassthrough: Boolean,
-    deniedTranscodeMimes: Set<String>
+    deniedTranscodeMimes: Set<String>,
+    transcodingSettings: PlayerSettings? = null
 ) {
     setForceOpticalPassthrough(forceOpticalPassthrough)
     setDeniedTranscodeMimes(deniedTranscodeMimes)
+    applyEac3Transcoding(
+        enabled = !forceOpticalPassthrough &&
+            transcodingSettings?.surroundFormatMode == com.nuvio.tv.data.local.SurroundFormatMode.MANUAL &&
+            transcodingSettings.deniedCodecHandling == com.nuvio.tv.data.local.DeniedCodecHandling.TRANSCODE_EAC3,
+        forceFiveOne = transcodingSettings?.forceEac3FiveOne == true
+    )
     if (downmixEnabled) {
         setAudioOutputChannels(
             audioOutputChannels.ffmpegLayoutName,

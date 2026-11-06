@@ -416,6 +416,7 @@ class PlayerRuntimeController(
     @Volatile var videoAspectRatio: Float = 0f
     @Volatile var exoPlayerView: androidx.media3.ui.PlayerView? = null
     internal var _loadControl: DefaultLoadControl? = null
+    @Volatile internal var debugAudioTrack: DebugAudioTrackBinding? = null
     internal var playbackSpeedAwareAudioSink: PlaybackSpeedAwareAudioSink? = null
 
     internal var progressJob: Job? = null
