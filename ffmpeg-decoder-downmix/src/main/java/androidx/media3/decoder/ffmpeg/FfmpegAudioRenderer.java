@@ -68,6 +68,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
   private volatile boolean forceOpticalPassthrough;
   // Experimental; disabled by default until the native E-AC-3 build is validated.
   private volatile boolean preferEac3Transcoding;
+  private volatile boolean forceEac3FiveOne;
   private volatile int transcodingInputMask = 7;
 
   public FfmpegAudioRenderer() {
@@ -163,7 +164,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
       boolean eac3Supported = preferEac3Transcoding && sinkSupportsFormat(
           new Format.Builder()
               .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
-              .setChannelCount(eac3OutputChannels(format.channelCount))
+              .setChannelCount(eac3OutputChannels(format.channelCount, forceEac3FiveOne))
               .setSampleRate(sampleRate)
               .build());
       supportsConfiguredOutput = preferEac3Transcoding ? eac3Supported : sinkSupportsFormat(
@@ -214,7 +215,7 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
     boolean eac3Supported = preferEac3Transcoding && sinkSupportsFormat(
         new Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_E_AC3)
-            .setChannelCount(eac3OutputChannels(format.channelCount))
+            .setChannelCount(eac3OutputChannels(format.channelCount, forceEac3FiveOne))
             .setSampleRate(48000)
             .build());
     boolean selected = isTranscodingInputSelected(
@@ -227,9 +228,6 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
     if (forceOpticalPassthrough && selected && !transcodeToAc3) {
       throw new FfmpegDecoderException("Requested compressed output is not supported by the audio sink.");
     }
-    if (transcodeToAc3 && preferEac3Transcoding && format.channelCount == 8 && !eac3Supported) {
-      throw new FfmpegDecoderException("E-AC-3 7.1 output is unsupported by the audio sink; refusing 5.1 conversion.");
-    }
     int initialInputBufferSize =
         format.maxInputSize != Format.NO_VALUE ? format.maxInputSize : DEFAULT_INPUT_BUFFER_SIZE;
     @C.PcmEncoding int outputEncoding;
@@ -237,8 +235,8 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
     @Nullable String outputLayoutName;
     if (transcodeToAc3) {
       outputEncoding = eac3Supported ? C.ENCODING_E_AC3 : C.ENCODING_AC3;
-      nativeOutputChannelCount = eac3Supported ? eac3OutputChannels(format.channelCount) : 6;
-      outputLayoutName = nativeOutputChannelCount == 8 ? "7.1" : nativeOutputChannelCount == 6 ? "5.1" : null;
+      nativeOutputChannelCount = eac3Supported ? eac3OutputChannels(format.channelCount, forceEac3FiveOne) : 6;
+      outputLayoutName = eac3Supported && forceEac3FiveOne ? "5.1(side)" : null;
       downmixActive = false;
     } else {
       int outputChannelCount = resolveOutputChannelCount(format.channelCount);
@@ -343,8 +341,8 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
     transcodingInputMask = mask & 15;
   }
 
-  private static int eac3OutputChannels(int inputChannels) {
-    return inputChannels == 8 ? 8 : inputChannels == 6 ? 6 : inputChannels;
+  private static int eac3OutputChannels(int inputChannels, boolean forceFiveOne) {
+    return forceFiveOne && inputChannels == 8 ? 6 : inputChannels;
   }
 
   private static boolean isTranscodingInputSelected(String mimeType, int mask) {
@@ -357,6 +355,10 @@ public final class FfmpegAudioRenderer extends DecoderAudioRenderer<Decoder<Deco
 
   public void setPreferEac3Transcoding(boolean enabled) {
     this.preferEac3Transcoding = enabled;
+  }
+
+  public void setForceEac3FiveOne(boolean enabled) {
+    forceEac3FiveOne = enabled;
   }
 
   /** Returns whether this renderer is the active playback path for FFmpeg downmix + center mix. */

@@ -312,6 +312,7 @@ data class PlayerSettings(
     val tunnelingEnabled: Boolean = false,
     val forceOpticalPassthrough: Boolean = false,
     val preferEac3Transcoding: Boolean = false,
+    val forceEac3FiveOne: Boolean = false,
     val ac3TranscodingInputMask: Int = 15, // TrueHD=1, DTS=2, DTS-HD=4, DDP=8
     val eac3TranscodingInputMask: Int = 7,
     val skipSilence: Boolean = false,
@@ -645,6 +646,7 @@ class PlayerSettingsDataStore @Inject constructor(
     private val ac3TranscodingInputMaskKey = intPreferencesKey("ac3_transcoding_input_mask")
     private val eac3TranscodingInputMaskKey = intPreferencesKey("eac3_transcoding_input_mask")
     private val preferEac3TranscodingKey = booleanPreferencesKey("prefer_eac3_transcoding")
+    private val forceEac3FiveOneKey = booleanPreferencesKey("force_eac3_five_one")
     private val forceOpticalPassthroughKey = booleanPreferencesKey("force_optical_passthrough")
     private val skipSilenceKey = booleanPreferencesKey("skip_silence")
     private val nightModeKey = stringPreferencesKey("night_mode")
@@ -1033,6 +1035,7 @@ class PlayerSettingsDataStore @Inject constructor(
                 tunnelingEnabled = prefs[tunnelingEnabledKey] ?: false,
                 forceOpticalPassthrough = prefs[forceOpticalPassthroughKey] ?: false,
                 preferEac3Transcoding = prefs[preferEac3TranscodingKey] ?: false,
+                forceEac3FiveOne = prefs[forceEac3FiveOneKey] ?: false,
                 ac3TranscodingInputMask = (prefs[ac3TranscodingInputMaskKey] ?: 15) and 15,
                 eac3TranscodingInputMask = (prefs[eac3TranscodingInputMaskKey] ?: 7) and 7,
                 skipSilence = prefs[skipSilenceKey] ?: false,
@@ -1311,6 +1314,12 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setPreferEac3Transcoding(enabled: Boolean) {
         store().edit { prefs ->
             prefs[preferEac3TranscodingKey] = enabled
+        }
+    }
+
+    suspend fun setForceEac3FiveOne(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[forceEac3FiveOneKey] = enabled
         }
     }
 

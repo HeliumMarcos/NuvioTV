@@ -158,6 +158,10 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setPreferEac3Transcoding(enabled)
     }
 
+    suspend fun setForceEac3FiveOne(enabled: Boolean) {
+        playerSettingsDataStore.setForceEac3FiveOne(enabled)
+    }
+
     suspend fun setSkipSilence(enabled: Boolean) {
         playerSettingsDataStore.setSkipSilence(enabled)
     }

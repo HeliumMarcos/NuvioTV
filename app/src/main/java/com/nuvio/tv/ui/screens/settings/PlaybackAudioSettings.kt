@@ -129,6 +129,15 @@ internal fun PlaybackAudioSection(
             enabled = enabled && settings.forceOpticalPassthrough && settings.decoderPriority != 0,
             onClick = { onOpenDialog(PlaybackDialog.TRANSCODING_FORMAT) }
         )
+        if (settings.preferEac3Transcoding) {
+            SettingsToggleRow(
+                title = stringResource(R.string.audio_transcoding_eac3_force_five_one),
+                subtitle = stringResource(R.string.audio_transcoding_eac3_force_five_one_sub),
+                checked = settings.forceEac3FiveOne,
+                enabled = enabled && settings.forceOpticalPassthrough && settings.decoderPriority != 0,
+                onToggle = { onUpdate { setForceEac3FiveOne(!settings.forceEac3FiveOne) } }
+            )
+        }
         SettingsSectionLabel(text = stringResource(R.string.audio_transcoding_inputs))
         SettingsNote(text = stringResource(R.string.audio_transcoding_inputs_sub))
         val inputFormats = listOf(1 to "TrueHD", 2 to "DTS", 4 to "DTS-HD") +

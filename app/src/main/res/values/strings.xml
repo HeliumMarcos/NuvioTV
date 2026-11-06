@@ -3437,6 +3437,8 @@
     <string name="audio_transcoding_format_sub">E-AC-3 is experimental and requires HDMI ARC/eARC support. Uses AC-3 if E-AC-3 is unsupported. Stop and restart playback after changing. Bluetooth uses PCM.</string>
     <string name="audio_transcoding_ac3">AC-3 (Dolby Digital 5.1)</string>
     <string name="audio_transcoding_eac3">E-AC-3 (Dolby Digital Plus 5.1/7.1, experimental)</string>
+    <string name="audio_transcoding_eac3_force_five_one">Force DDP output to 5.1</string>
+    <string name="audio_transcoding_eac3_force_five_one_sub">Mixes 7.1 into 5.1 when transcoding selected formats to Dolby Digital Plus.</string>
     <string name="audio_transcoding_inputs">Formats to transcode</string>
     <string name="audio_transcoding_inputs_sub">Only selected source formats are converted. Unselected formats use normal playback. Stop and restart playback after changing.</string>
 </resources>

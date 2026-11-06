@@ -938,6 +938,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                 downmixLfeLevel = playerSettings.downmixLfeLevel.level,
                 forceOpticalPassthrough = isForcePassthroughActive,
                 preferEac3Transcoding = playerSettings.preferEac3Transcoding,
+                forceEac3FiveOne = playerSettings.forceEac3FiveOne,
                 transcodingInputMask = playerSettings.transcodingInputMask,
                 bluetoothForcePcm = isBluetoothAudioOutput,
                 playbackSpeedProvider = { _uiState.value.playbackSpeed },
@@ -955,6 +956,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         lfeMixLevel = playerSettings.downmixLfeLevel.level,
                         forceOpticalPassthrough = isForcePassthroughActive,
                         preferEac3Transcoding = playerSettings.preferEac3Transcoding,
+                        forceEac3FiveOne = playerSettings.forceEac3FiveOne,
                         transcodingInputMask = playerSettings.transcodingInputMask
                     )
                     applyCenterMixLevel(_uiState.value.centerMixLevelDb)
@@ -2188,6 +2190,7 @@ private class SubtitleOffsetRenderersFactory(
     private val downmixLfeLevel: Float,
     private val forceOpticalPassthrough: Boolean,
     private val preferEac3Transcoding: Boolean,
+    private val forceEac3FiveOne: Boolean,
     private val transcodingInputMask: Int,
     private val bluetoothForcePcm: Boolean = false,
     private val playbackSpeedProvider: () -> Float,
@@ -2369,6 +2372,7 @@ private class SubtitleOffsetRenderersFactory(
                 lfeMixLevel = downmixLfeLevel,
                 forceOpticalPassthrough = forceOpticalPassthrough,
                 preferEac3Transcoding = preferEac3Transcoding,
+                forceEac3FiveOne = forceEac3FiveOne,
                 transcodingInputMask = transcodingInputMask
             )
         }
@@ -2382,10 +2386,14 @@ private fun FfmpegAudioRenderer.applyDownmixSettings(
     lfeMixLevel: Float,
     forceOpticalPassthrough: Boolean,
     preferEac3Transcoding: Boolean,
+    forceEac3FiveOne: Boolean,
     transcodingInputMask: Int
 ) {
     applyTranscodingInputMask(transcodingInputMask)
-    applyExperimentalEac3Preference(preferEac3Transcoding && forceOpticalPassthrough)
+    applyExperimentalEac3Preference(
+        preferEac3Transcoding && forceOpticalPassthrough,
+        forceEac3FiveOne
+    )
     setForceOpticalPassthrough(forceOpticalPassthrough)
     if (downmixEnabled) {
         setAudioOutputChannels(

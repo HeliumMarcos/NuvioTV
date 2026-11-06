@@ -1242,16 +1242,19 @@ int configureResampler(DecoderContext* decoderContext, AVFrame* frame,
   AVChannelLayout outputLayout = {};
   if (decoderContext->transcoding_mode != 0) {
     if (decoderContext->transcoding_mode == 2) {
-      // Preserve the decoded layout, including 5.1 side/back and discrete 7.1.
-      // The encoder and renderer must agree; never advertise six while emitting eight.
-      if (inputLayout.nb_channels != decoderContext->requested_output_channel_count ||
+      // An explicit output layout allows downmixing 7.1. Otherwise, preserve the
+      // decoded layout and reject a mismatch with the renderer's negotiated count.
+      const int requestedChannels = decoderContext->requested_output_channel_count;
+      const bool downmixToFiveOne = inputLayout.nb_channels == 8 &&
+          requestedChannels == 6 && decoderContext->requested_output_layout_name;
+      if ((!downmixToFiveOne && inputLayout.nb_channels != requestedChannels) ||
           (inputLayout.nb_channels != 6 && inputLayout.nb_channels != 8)) {
         LOGE("EAC3 channel preservation failed: input=%d requested=%d",
              inputLayout.nb_channels, decoderContext->requested_output_channel_count);
         av_channel_layout_uninit(&inputLayout);
         return AUDIO_DECODER_ERROR_OTHER;
       }
-      if (av_channel_layout_copy(&outputLayout, &inputLayout) < 0) {
+      if (!getOutputChannelLayout(decoderContext, &inputLayout, &outputLayout)) {
         av_channel_layout_uninit(&inputLayout);
         return AUDIO_DECODER_ERROR_OTHER;
       }
