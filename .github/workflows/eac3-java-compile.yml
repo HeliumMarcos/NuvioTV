@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   compile-eac3-armv7:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 110
     env:
       FFMPEG_TARGET_ABI: armeabi-v7a
@@ -24,7 +24,7 @@ jobs:
       FFMPEG_SOURCE_DIR: ${{ github.workspace }}/ffmpeg-decoder-downmix/src/main/jni/ffmpeg
       FFMPEG_BUILD_DIR: ${{ github.workspace }}/ffmpeg-decoder-downmix/src/main/jni/ffmpeg/android-libs
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: false
       - uses: actions/setup-java@v5
@@ -43,7 +43,9 @@ jobs:
           : "${ANDROID_HOME:?\"ANDROID_HOME is not set\"}"
           command -v sdkmanager
           sdkmanager --version
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
       - name: Install Android build dependencies
         run: |
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
@@ -120,13 +122,13 @@ jobs:
           test -n "$(find "$RUNNER_TEMP/eac3-apk" -type f -name "*.apk" -print -quit)"
           ls -lh "$RUNNER_TEMP/eac3-apk"
       - name: Upload experimental debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nuviotv-eac3-experimental-armeabi-v7a-debug-apk
           path: ${{ runner.temp }}/eac3-apk/*.apk
           if-no-files-found: error
       - name: Upload compiled decoder AAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: experimental-eac3-decoder-armeabi-v7a
           path: ffmpeg-decoder-downmix/build/outputs/aar/ffmpeg-decoder-downmix-debug.aar

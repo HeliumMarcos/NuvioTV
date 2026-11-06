@@ -10,10 +10,10 @@ permissions:
   contents: read
 jobs:
   prove-channels:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Fetch pinned candidate base
         run: |
           git clone --filter=blob:none --no-checkout https://github.com/FFmpeg/FFmpeg.git "$RUNNER_TEMP/ffmpeg-proof"
@@ -41,7 +41,7 @@ jobs:
         run: python3 experiments/eac3-7.1/verify_channels.py "$RUNNER_TEMP/ffmpeg-proof/ffmpeg" "$RUNNER_TEMP/proof-results"
       - name: Upload proof artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eac3-71-proof
           path: |
