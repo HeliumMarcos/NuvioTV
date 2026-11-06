@@ -18,9 +18,10 @@ final class Eac3Surround {
       return false;
     }
     int extension = offset + baseSize;
+    int bitstreamId = (data[extension + 5] & 0xff) >> 3;
     if (!hasSyncword(data, extension)
         || ((data[extension + 2] & 0xff) >> 6) != 1
-        || ((data[extension + 5] & 0xff) >> 3) != 16) {
+        || bitstreamId < 11 || bitstreamId > 16) {
       return false;
     }
     int extensionSize = Ac3Util.parseAc3SyncframeSize(
