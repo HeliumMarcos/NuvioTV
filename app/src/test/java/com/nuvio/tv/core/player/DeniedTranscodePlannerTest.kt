@@ -9,58 +9,28 @@ import org.junit.Test
 class DeniedTranscodePlannerTest {
 
     @Test
-    fun eac3TargetUsesItsOwnSupportAndOnlySelectedLosslessInputs() {
-        val policy = AudioPassthroughPolicy(allowAc3 = false, allowTrueHd = false, allowDts = false, allowDtsHd = false)
-        assertEquals(setOf(MimeTypes.AUDIO_TRUEHD), DeniedTranscodePlanner.effectiveTranscodeMimes(
-            policy, true, false, MimeTypes.AUDIO_E_AC3, 1))
-    }
-
-    @Test
-    fun eac3TargetDoesNotRecodifyNativeDdpOrUnselectedSources() {
-        val policy = AudioPassthroughPolicy(allowTrueHd = false, allowDts = false,
-            allowDtsHd = false, learnedDeniedGroups = setOf(Group.EAC3))
+    fun eac3UsesDeniedEligibleFormatsAndKeepsAllowedFormatsInPassthrough() {
+        val policy = AudioPassthroughPolicy(
+            allowAc3 = false, allowTrueHd = false, allowDtsHd = false
+        )
+        assertEquals(
+            setOf(MimeTypes.AUDIO_TRUEHD, MimeTypes.AUDIO_DTS_HD),
+            DeniedTranscodePlanner.effectiveTranscodeMimes(policy, true, MimeTypes.AUDIO_E_AC3)
+        )
         assertTrue(DeniedTranscodePlanner.effectiveTranscodeMimes(
-            policy, true, false, MimeTypes.AUDIO_E_AC3, 15).isEmpty())
-        assertEquals(setOf(MimeTypes.AUDIO_DTS_HD), DeniedTranscodePlanner.effectiveTranscodeMimes(
-            policy.copy(learnedDeniedGroups = emptySet()), true, false, MimeTypes.AUDIO_E_AC3, 4))
-    }
-
-    @Test
-    fun noSelectedInputsMeansNoTranscoding() {
-        assertTrue(DeniedTranscodePlanner.effectiveTranscodeMimes(
-            AudioPassthroughPolicy(allowTrueHd = false), true, false, MimeTypes.AUDIO_AC3, 0).isEmpty())
-    }
-
-    @Test
-    fun automaticModeIgnoresManualEac3MasksAndForceFiveOne() {
-        assertEquals(DeniedTranscodePlanner.Request(MimeTypes.AUDIO_AC3, 15, false),
-            DeniedTranscodePlanner.resolvePreferences(false, true, 0, 1, true))
-        assertEquals(DeniedTranscodePlanner.Request(MimeTypes.AUDIO_AC3, 15, false),
-            DeniedTranscodePlanner.resolvePreferences(false, false, 0, 0, true))
-    }
-
-    @Test
-    fun manualPreferencesKeepSelectionsIndependentForEachDestination() {
-        assertEquals(DeniedTranscodePlanner.Request(MimeTypes.AUDIO_E_AC3, 4, true),
-            DeniedTranscodePlanner.resolvePreferences(true, true, 8, 4, true))
-        assertEquals(DeniedTranscodePlanner.Request(MimeTypes.AUDIO_AC3, 8, false),
-            DeniedTranscodePlanner.resolvePreferences(true, false, 8, 4, false))
+            policy.copy(learnedDeniedGroups = setOf(Group.EAC3)), true, MimeTypes.AUDIO_E_AC3
+        ).isEmpty())
     }
 
     private fun plan(
         policy: AudioPassthroughPolicy,
-        transcodeDeniedToAc3: Boolean = true,
-        forcePassthroughActive: Boolean = false
-    ): Set<String> = DeniedTranscodePlanner.effectiveTranscodeMimes(
-        policy = policy,
-        transcodeDeniedToAc3 = transcodeDeniedToAc3,
-        forcePassthroughActive = forcePassthroughActive
-    )
+        transcodeEnabled: Boolean = true
+    ): Set<String> = DeniedTranscodePlanner.effectiveTranscodeMimes(policy, transcodeEnabled)
 
     @Test
     fun optOut_yieldsEmptySet_evenWithDeniedFormats() {
         val policy = AudioPassthroughPolicy(allowDts = false, allowDtsHd = false)
-        assertTrue(plan(policy, transcodeDeniedToAc3 = false).isEmpty())
+        assertTrue(plan(policy, transcodeEnabled = false).isEmpty())
     }
 
     @Test
@@ -105,12 +75,6 @@ class DeniedTranscodePlannerTest {
             learnedDeniedGroups = setOf(Group.AC3)
         )
         assertTrue(plan(policy).isEmpty())
-    }
-
-    @Test
-    fun forceModeActive_yieldsEmptySet() {
-        val policy = AudioPassthroughPolicy(allowDts = false)
-        assertTrue(plan(policy, forcePassthroughActive = true).isEmpty())
     }
 
     @Test

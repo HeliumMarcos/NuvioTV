@@ -17,7 +17,7 @@ class DebugAudioFormatTest {
         val source = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_TRUEHD)
             .setMetadata(Metadata(TrueHdAtmos.INSTANCE))
             .setChannelCount(8).setSampleRate(48000).build()
-        assertEquals("TrueHD · 7.1 (8 channels) · 48 kHz · Atmos", DebugAudioFormat.describeInput(source))
+        assertEquals("Dolby Atmos TrueHD (true-hd) 7.1", DebugAudioFormat.describeInput(source))
         val passthrough = AudioSink.AudioTrackConfig(C.ENCODING_DOLBY_TRUEHD, 48000,
             AudioFormat.CHANNEL_OUT_7POINT1_SURROUND, false, true, 32768)
         assertEquals("TrueHD · 7.1 (8 channels) · 48 kHz · Atmos",
@@ -34,7 +34,7 @@ class DebugAudioFormatTest {
             .setChannelCount(8).setSampleRate(96000).build()
         val output = AudioSink.AudioTrackConfig(C.ENCODING_E_AC3, 48000,
             AudioFormat.CHANNEL_OUT_5POINT1, false, true, 32768)
-        assertEquals("TrueHD · 7.1 (8 channels) · 96 kHz", DebugAudioFormat.describeInput(source))
+        assertEquals("Dolby TrueHD (true-hd) 7.1", DebugAudioFormat.describeInput(source))
         assertEquals("DDP (E-AC-3) · 5.1 (6 channels) · 48 kHz", DebugAudioFormat.describeOutput(output))
     }
 
@@ -53,7 +53,7 @@ class DebugAudioFormatTest {
     @Test
     fun `unknown format remains unknown and EAC3 does not imply Atmos`() {
         assertEquals(null, DebugAudioFormat.describeInput(null))
-        assertEquals("? · ? ch · ? kHz", DebugAudioFormat.describeInput(Format.Builder().build()))
+        assertEquals(null, DebugAudioFormat.describeInput(Format.Builder().build()))
         val output = AudioSink.AudioTrackConfig(C.ENCODING_E_AC3, 48000,
             AudioFormat.CHANNEL_OUT_5POINT1, false, false, 32768)
         assertFalse(DebugAudioFormat.describeOutput(output).contains("Atmos"))
@@ -62,14 +62,14 @@ class DebugAudioFormatTest {
     fun `JOC confirms Atmos without inventing height channels`() {
         val source = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_E_AC3_JOC)
             .setChannelCount(6).setSampleRate(48000).build()
-        assertEquals("DDP (E-AC-3) · 5.1 (6 channels) · 48 kHz · Atmos", DebugAudioFormat.describeInput(source))
+        assertEquals("Dolby Atmos DD+ (eac3-joc) 5.1", DebugAudioFormat.describeInput(source))
     }
 
     @Test
     fun `TrueHD codec and Atmos filename do not prove Atmos`() {
         val source = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_TRUEHD)
             .setLabel("TrueHD Atmos 7.1.4").setChannelCount(8).setSampleRate(48000).build()
-        assertEquals("TrueHD · 7.1 (8 channels) · 48 kHz", DebugAudioFormat.describeInput(source))
+        assertEquals("Dolby TrueHD (true-hd) 7.1", DebugAudioFormat.describeInput(source))
     }
 
     @Test

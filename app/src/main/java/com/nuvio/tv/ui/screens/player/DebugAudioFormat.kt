@@ -11,9 +11,15 @@ import java.util.Locale
 /** AudioTrack is the app-to-Android boundary; firmware can still convert audio after it. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal object DebugAudioFormat {
-    fun describeInput(format: Format?): String? = format?.let {
-        describe(codecName(it.sampleMimeType), it.channelCount, it.sampleRate,
-            hasLfe = null) + if (it.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC || TrueHdAtmos.isPresent(it)) " · Atmos" else ""
+    fun describeInput(format: Format?): String? {
+        if (format == null) return null
+        val mime = format.sampleMimeType ?: return format.channelCount.takeIf { it > 0 }?.let(::channelLayout)
+        val name = if (mime == MimeTypes.AUDIO_TRUEHD && TrueHdAtmos.isPresent(format)) {
+            "Dolby Atmos TrueHD"
+        } else {
+            friendlyAudioName(mime)
+        }
+        return "$name (${mime.substringAfter('/')}) ${channelLayout(format.channelCount)}"
     }
 
     fun describeOutput(config: AudioSink.AudioTrackConfig, source: Format? = null): String {
@@ -46,16 +52,32 @@ internal object DebugAudioFormat {
         return "$codec · $channelLabel · $rate"
     }
 
-    private fun codecName(mime: String?): String = when (mime) {
-        MimeTypes.AUDIO_AC3 -> "DD (AC-3)"
-        MimeTypes.AUDIO_E_AC3 -> "DDP (E-AC-3)"
-        MimeTypes.AUDIO_E_AC3_JOC -> "DDP (E-AC-3)"
-        MimeTypes.AUDIO_TRUEHD -> "TrueHD"
-        MimeTypes.AUDIO_DTS -> "DTS"
+    private fun friendlyAudioName(mime: String): String = when (mime) {
+        MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Atmos DD+"
+        MimeTypes.AUDIO_E_AC3 -> "Dolby Digital+"
+        MimeTypes.AUDIO_AC3 -> "Dolby Digital"
+        MimeTypes.AUDIO_TRUEHD -> "Dolby TrueHD"
+        MimeTypes.AUDIO_AC4 -> "Dolby AC-4"
+        MimeTypes.AUDIO_DTS_X -> "DTS:X"
+        MimeTypes.AUDIO_DTS_EXPRESS -> "DTS Express"
         MimeTypes.AUDIO_DTS_HD -> "DTS-HD"
-        MimeTypes.AUDIO_RAW -> "PCM"
-        null -> "?"
-        else -> mime.removePrefix("audio/")
+        MimeTypes.AUDIO_DTS -> "DTS"
+        MimeTypes.AUDIO_AAC -> "AAC"
+        MimeTypes.AUDIO_OPUS -> "Opus"
+        MimeTypes.AUDIO_FLAC -> "FLAC"
+        MimeTypes.AUDIO_ALAC -> "ALAC"
+        MimeTypes.AUDIO_VORBIS -> "Vorbis"
+        MimeTypes.AUDIO_MPEG -> "MP3"
+        else -> mime.substringAfter('/')
+    }
+
+    private fun channelLayout(channelCount: Int): String = when {
+        channelCount <= 0 -> "? ch"
+        channelCount == 1 -> "mono"
+        channelCount == 2 -> "2.0"
+        channelCount == 6 -> "5.1"
+        channelCount == 8 -> "7.1"
+        else -> "$channelCount ch"
     }
 
     private fun encodingName(encoding: Int): String = when (encoding) {

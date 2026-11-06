@@ -30,7 +30,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.Text
@@ -68,8 +67,6 @@ internal data class PlayerSnapshot(
     val durationMs: Long,
     val droppedFrames: Int,
     val fileSizeBytes: Long?,
-    val audioMimeType: String?,
-    val audioChannelCount: Int,
     val audioUnderruns: Int,
     val nativeMemoryBytes: Long? = null,
     val audioRouting: AudioRoutingSnapshot? = null,
@@ -119,9 +116,6 @@ internal fun PlayerDebugStatsOverlay(
                     durationMs = runCatching { it.duration }.getOrNull() ?: -1L,
                     droppedFrames = runCatching { it.videoDecoderCounters?.droppedBufferCount }.getOrNull() ?: 0,
                     fileSizeBytes = viewModel.getCurrentFileSizeBytes() ?: probedFileSize,
-                    audioMimeType = runCatching { it.audioFormat?.sampleMimeType }.getOrNull(),
-                    audioChannelCount = runCatching { it.audioFormat?.channelCount }.getOrNull()
-                        ?: -1,
                     audioUnderruns = PlayerAudioUnderrunCounter.current(),
                     nativeMemoryBytes = viewModel.getPlayerNativeMemoryBytes(),
                     audioRouting = viewModel.getAudioRoutingSnapshot(),
@@ -211,11 +205,14 @@ private class DebugStatsSampler(context: Context) {
         add(bufferStat(snapshot))
         add(bitrateStat(snapshot))
         add(networkStat())
-        add(audioStat(snapshot))
-        snapshot?.inputAudioDescription?.let { add(DebugStat("Input", it)) }
-        snapshot?.outputAudioDescription?.let {
-            add(DebugStat("Output", it.format))
-            it.route?.let { route -> add(DebugStat("Route", route)) }
+        snapshot?.inputAudioDescription?.let { add(DebugStat("audio", it)) }
+        snapshot?.outputAudioDescription?.let { output ->
+            when (snapshot.audioRouting?.mode) {
+                AudioRoutingMode.TRANSCODE_AC3, AudioRoutingMode.TRANSCODE_EAC3 ->
+                    add(DebugStat("Output", output.format))
+                else -> Unit
+            }
+            output.route?.let { add(DebugStat("Route", it)) }
         }
         add(audioRouteStat(snapshot))
         add(audioBitrateStat(snapshot))
@@ -352,50 +349,6 @@ private class DebugStatsSampler(context: Context) {
                 networkTotal / networkSamples
             )
         )
-    }
-
-    private fun audioStat(snapshot: PlayerSnapshot?): DebugStat {
-        val mime = snapshot?.audioMimeType
-        val channels = snapshot?.audioChannelCount ?: -1
-        if (mime == null && channels <= 0) return DebugStat("audio", UNAVAILABLE)
-        if (mime == null) return DebugStat("audio", channelLayout(channels))
-        val name = "${friendlyAudioName(mime)} (${mime.substringAfter('/')})"
-        val value = if (isObjectBasedAudio(mime)) name else "$name   ${channelLayout(channels)}"
-        return DebugStat("audio", value)
-    }
-
-    private fun isObjectBasedAudio(mime: String): Boolean {
-        return mime == MimeTypes.AUDIO_E_AC3_JOC ||
-            mime == MimeTypes.AUDIO_AC4 ||
-            mime == MimeTypes.AUDIO_DTS_X
-    }
-
-    private fun friendlyAudioName(mime: String): String = when (mime) {
-        MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Atmos DD+"
-        MimeTypes.AUDIO_E_AC3 -> "Dolby Digital+"
-        MimeTypes.AUDIO_AC3 -> "Dolby Digital"
-        MimeTypes.AUDIO_TRUEHD -> "Dolby TrueHD"
-        MimeTypes.AUDIO_AC4 -> "Dolby AC-4"
-        MimeTypes.AUDIO_DTS_X -> "DTS:X"
-        MimeTypes.AUDIO_DTS_EXPRESS -> "DTS Express"
-        MimeTypes.AUDIO_DTS_HD -> "DTS-HD"
-        MimeTypes.AUDIO_DTS -> "DTS"
-        MimeTypes.AUDIO_AAC -> "AAC"
-        MimeTypes.AUDIO_OPUS -> "Opus"
-        MimeTypes.AUDIO_FLAC -> "FLAC"
-        MimeTypes.AUDIO_ALAC -> "ALAC"
-        MimeTypes.AUDIO_VORBIS -> "Vorbis"
-        MimeTypes.AUDIO_MPEG -> "MP3"
-        else -> mime.substringAfter('/')
-    }
-
-    private fun channelLayout(channelCount: Int): String = when {
-        channelCount <= 0 -> "? ch"
-        channelCount == 1 -> "mono"
-        channelCount == 2 -> "2.0"
-        channelCount == 6 -> "5.1"
-        channelCount == 8 -> "7.1"
-        else -> "$channelCount ch"
     }
 
     private fun audioRouteStat(snapshot: PlayerSnapshot?): DebugStat {

@@ -198,35 +198,10 @@ internal fun PlaybackAudioSection(
             SettingsActionRow(
                 title = stringResource(R.string.audio_transcoding_handling),
                 subtitle = stringResource(R.string.audio_transcoding_handling_sub),
-                value = deniedCodecHandlingLabel(settings.deniedCodecHandling),
+                value = deniedCodecHandlingLabel(settings.deniedCodecHandling.availableOutput()),
                 enabled = switchesEnabled,
                 onClick = { onOpenDialog(PlaybackDialog.DENIED_CODEC_HANDLING) }
             )
-            if (settings.deniedCodecHandling != DeniedCodecHandling.DECODE_PCM) {
-                val eac3 = settings.deniedCodecHandling == DeniedCodecHandling.TRANSCODE_EAC3
-                val mask = if (eac3) settings.eac3TranscodingInputMask else settings.ac3TranscodingInputMask
-                SettingsNote(text = stringResource(R.string.audio_transcoding_inputs_sub))
-                val sources = listOf(1 to "TrueHD", 2 to "DTS", 4 to "DTS-HD") +
-                    if (eac3) emptyList() else listOf(8 to "DDP (E-AC-3)")
-                sources.forEach { (flag, label) ->
-                    SettingsToggleRow(
-                        title = label,
-                        subtitle = null,
-                        checked = mask and flag != 0,
-                        enabled = switchesEnabled,
-                        onToggle = { onUpdate { setTranscodingInputEnabled(eac3, flag, mask and flag == 0) } }
-                    )
-                }
-                if (eac3) {
-                    SettingsToggleRow(
-                        title = stringResource(R.string.audio_eac3_force_five_one),
-                        subtitle = stringResource(R.string.audio_eac3_force_five_one_sub),
-                        checked = settings.forceEac3FiveOne,
-                        enabled = switchesEnabled && Eac3TranscodingSupport.available,
-                        onToggle = { onUpdate { setForceEac3FiveOne(!settings.forceEac3FiveOne) } }
-                    )
-                }
-            }
         }
 
         SettingsActionRow(
@@ -251,14 +226,6 @@ internal fun PlaybackAudioSection(
             value = null,
             enabled = enabled && !settings.useSystemPassthrough,
             onClick = { onUpdate { resetIecPassthroughProbe() } }
-        )
-
-        SettingsToggleRow(
-            title = stringResource(R.string.audio_force_optical_passthrough),
-            subtitle = stringResource(R.string.audio_force_optical_passthrough_sub),
-            checked = settings.forceOpticalPassthrough && settings.decoderPriority != 0,
-            onToggle = { onUpdate { setForceOpticalPassthrough(!settings.forceOpticalPassthrough) } },
-            enabled = enabled && settings.decoderPriority != 0
         )
     }
 }
@@ -346,17 +313,18 @@ internal fun AudioSettingsDialogs(
         )
         PlaybackDialog.DENIED_CODEC_HANDLING -> SettingsSingleChoiceDialog(
             title = stringResource(R.string.audio_transcoding_handling),
+            subtitle = stringResource(R.string.audio_transcoding_handling_dialog_sub),
             options = DeniedCodecHandling.entries.filter {
                 it != DeniedCodecHandling.TRANSCODE_EAC3 || Eac3TranscodingSupport.available
             }.map { SettingsPickerOption(it, deniedCodecHandlingLabel(it)) },
-            selectedValue = settings.deniedCodecHandling,
+            selectedValue = settings.deniedCodecHandling.availableOutput(),
             onOptionSelected = { handling ->
                 onUpdate { setDeniedCodecHandling(handling) }
                 onDismiss()
             },
             onDismiss = onDismiss,
             width = 460.dp,
-            maxHeight = 320.dp
+            maxHeight = 380.dp
         )
         PlaybackDialog.SURROUND_FORMAT_MODE -> SurroundFormatModeDialog(
             selectedMode = settings.surroundFormatMode,
@@ -535,3 +503,10 @@ private fun deniedCodecHandlingLabel(handling: DeniedCodecHandling): String = wh
     DeniedCodecHandling.TRANSCODE_AC3 -> "Dolby Digital (AC-3)"
     DeniedCodecHandling.TRANSCODE_EAC3 -> "Dolby Digital Plus (E-AC-3)"
 }
+
+private fun DeniedCodecHandling.availableOutput(): DeniedCodecHandling =
+    if (this == DeniedCodecHandling.TRANSCODE_EAC3 && !Eac3TranscodingSupport.available) {
+        DeniedCodecHandling.DECODE_PCM
+    } else {
+        this
+    }

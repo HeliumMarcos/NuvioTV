@@ -155,10 +155,6 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.clearTunnelDeadAudioClasses()
     }
 
-    suspend fun setForceOpticalPassthrough(enabled: Boolean) {
-        playerSettingsDataStore.setForceOpticalPassthrough(enabled)
-    }
-
     suspend fun setUseSystemPassthrough(enabled: Boolean) {
         playerSettingsDataStore.setUseSystemPassthrough(enabled)
     }
@@ -277,13 +273,6 @@ class PlaybackSettingsViewModel @Inject constructor(
     suspend fun setDeniedCodecHandling(handling: DeniedCodecHandling) {
         playerSettingsDataStore.setDeniedCodecHandling(handling)
     }
-    suspend fun setForceEac3FiveOne(enabled: Boolean) {
-        playerSettingsDataStore.setForceEac3FiveOne(enabled)
-    }
-    suspend fun setTranscodingInputEnabled(eac3Target: Boolean, flag: Int, enabled: Boolean) {
-        playerSettingsDataStore.setTranscodingInputEnabled(eac3Target, flag, enabled)
-    }
-
     suspend fun setTranscodeDeniedToAc3(enabled: Boolean) {
         playerSettingsDataStore.setDeniedCodecHandling(
             if (enabled) DeniedCodecHandling.TRANSCODE_AC3 else DeniedCodecHandling.DECODE_PCM

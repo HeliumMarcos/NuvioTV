@@ -303,7 +303,6 @@ data class PlayerSettings(
     val audioOutputChannels: AudioOutputChannels = AudioOutputChannels.default,
     val maintainOriginalAudioOnDownmix: Boolean = true,
     val tunnelingEnabled: Boolean = false,
-    val forceOpticalPassthrough: Boolean = false,
     val useSystemPassthrough: Boolean = false,
     val surroundFormatMode: SurroundFormatMode = SurroundFormatMode.AUTO,
     val surroundChannelTarget: SurroundChannelTarget = SurroundChannelTarget.AUTO,
@@ -313,9 +312,6 @@ data class PlayerSettings(
     val allowDtsPassthrough: Boolean = true,
     val allowDtshdPassthrough: Boolean = true,
     val deniedCodecHandling: DeniedCodecHandling = DeniedCodecHandling.DECODE_PCM,
-    val forceEac3FiveOne: Boolean = false,
-    val ac3TranscodingInputMask: Int = 15,
-    val eac3TranscodingInputMask: Int = 7,
     val audioRejectionsSeen: Set<String> = emptySet(),
     val audioRejectionsConfirmed: Set<String> = emptySet(),
     val tunnelDeadAudioClasses: Set<String> = emptySet(),
@@ -608,7 +604,6 @@ class PlayerSettingsDataStore @Inject constructor(
     private val downmixNormalizationEnabledLegacyKey =
         booleanPreferencesKey("downmix_normalization_enabled")
     private val tunnelingEnabledKey = booleanPreferencesKey("tunneling_enabled")
-    private val forceOpticalPassthroughKey = booleanPreferencesKey("force_optical_passthrough")
     private val useSystemPassthroughKey = booleanPreferencesKey("use_system_passthrough")
     private val surroundFormatModeKey = stringPreferencesKey("surround_format_mode")
     private val surroundChannelTargetKey = stringPreferencesKey("surround_channel_target")
@@ -617,9 +612,6 @@ class PlayerSettingsDataStore @Inject constructor(
     private val allowTruehdPassthroughKey = booleanPreferencesKey("allow_truehd_passthrough")
     private val allowDtsPassthroughKey = booleanPreferencesKey("allow_dts_passthrough")
     private val allowDtshdPassthroughKey = booleanPreferencesKey("allow_dtshd_passthrough")
-    private val forceEac3FiveOneKey = booleanPreferencesKey("force_eac3_five_one")
-    private val ac3TranscodingInputMaskKey = intPreferencesKey("ac3_transcoding_input_mask")
-    private val eac3TranscodingInputMaskKey = intPreferencesKey("eac3_transcoding_input_mask")
     private val deniedCodecHandlingKey = stringPreferencesKey("denied_codec_handling")
     private val audioRejectionsSeenKey = stringSetPreferencesKey("audio_rejections_seen")
     private val audioRejectionsConfirmedKey = stringSetPreferencesKey("audio_rejections_confirmed")
@@ -1006,7 +998,6 @@ class PlayerSettingsDataStore @Inject constructor(
                     prefs[maintainOriginalAudioOnDownmixKey]
                         ?: !(prefs[downmixNormalizationEnabledLegacyKey] ?: false),
                 tunnelingEnabled = prefs[tunnelingEnabledKey] ?: false,
-                forceOpticalPassthrough = prefs[forceOpticalPassthroughKey] ?: false,
                 useSystemPassthrough = prefs[useSystemPassthroughKey] ?: false,
                 surroundFormatMode = SurroundFormatMode.fromStoredString(prefs[surroundFormatModeKey]),
                 surroundChannelTarget = SurroundChannelTarget.fromStoredString(prefs[surroundChannelTargetKey]),
@@ -1016,9 +1007,6 @@ class PlayerSettingsDataStore @Inject constructor(
                 allowDtsPassthrough = prefs[allowDtsPassthroughKey] ?: true,
                 allowDtshdPassthrough = prefs[allowDtshdPassthroughKey] ?: true,
                 deniedCodecHandling = DeniedCodecHandling.fromStoredString(prefs[deniedCodecHandlingKey]),
-                forceEac3FiveOne = prefs[forceEac3FiveOneKey] ?: false,
-                ac3TranscodingInputMask = (prefs[ac3TranscodingInputMaskKey] ?: 15) and 15,
-                eac3TranscodingInputMask = (prefs[eac3TranscodingInputMaskKey] ?: 7) and 7,
                 audioRejectionsSeen = prefs[audioRejectionsSeenKey] ?: emptySet(),
                 audioRejectionsConfirmed = prefs[audioRejectionsConfirmedKey] ?: emptySet(),
                 tunnelDeadAudioClasses = prefs[tunnelDeadAudioClassesKey] ?: emptySet(),
@@ -1292,12 +1280,6 @@ class PlayerSettingsDataStore @Inject constructor(
         }
     }
 
-    suspend fun setForceOpticalPassthrough(enabled: Boolean) {
-        store().edit { prefs ->
-            prefs[forceOpticalPassthroughKey] = enabled
-        }
-    }
-
     suspend fun setUseSystemPassthrough(enabled: Boolean) {
         store().edit { prefs ->
             prefs[useSystemPassthroughKey] = enabled
@@ -1343,20 +1325,6 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setAllowDtshdPassthrough(enabled: Boolean) {
         store().edit { prefs ->
             prefs[allowDtshdPassthroughKey] = enabled
-        }
-    }
-
-    suspend fun setForceEac3FiveOne(enabled: Boolean) {
-        store().edit { it[forceEac3FiveOneKey] = enabled }
-    }
-
-    suspend fun setTranscodingInputEnabled(eac3Target: Boolean, flag: Int, enabled: Boolean) {
-        require(flag == 1 || flag == 2 || flag == 4 || (!eac3Target && flag == 8))
-        store().edit { prefs ->
-            val key = if (eac3Target) eac3TranscodingInputMaskKey else ac3TranscodingInputMaskKey
-            val allowed = if (eac3Target) 7 else 15
-            val current = prefs[key] ?: allowed
-            prefs[key] = (if (enabled) current or flag else current and flag.inv()) and allowed
         }
     }
 
