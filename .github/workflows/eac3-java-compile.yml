@@ -1,10 +1,6 @@
 name: Experimental E-AC-3 Android build
 
 on:
-  push:
-    branches:
-      - feature/eac3-transcoding
-      - codex/eac3-7.1
   workflow_dispatch:
 
 permissions:

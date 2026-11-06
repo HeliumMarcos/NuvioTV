@@ -1,10 +1,5 @@
 name: E-AC-3 7.1 encoder proof
 on:
-  push:
-    branches: [codex/eac3-7.1]
-    paths:
-      - 'experiments/eac3-7.1/**'
-      - '.github/workflows/eac3-71-proof.yml'
   workflow_dispatch:
 permissions:
   contents: read
