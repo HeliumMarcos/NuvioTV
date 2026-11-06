@@ -2123,6 +2123,24 @@ public class MatroskaExtractor implements Extractor {
       return finishWriteSampleData();
     }
 
+    if (track.trueHdSamplesToAnalyze > 0 && sampleBytesRead == 0) {
+      int length = min(size, MAX_E_AC3_PROBE_BYTES);
+      byte[] sample = new byte[length];
+      try {
+        boolean available = zlibSampleSource != null
+            ? peekSampleBytesFromBuffer(zlibSampleSource, sample, length)
+            : input.peekFully(sample, 0, length, true);
+        track.trueHdSamplesToAnalyze--;
+        if (available && refineTrueHdTrack(track, sample, 0, length)) {
+          track.output.format(checkNotNull(track.format));
+        }
+      } finally {
+        if (zlibSampleSource == null) {
+          input.resetPeekPosition();
+        }
+      }
+    }
+
     if (track.waitingForEac3Analysis) {
       int length = min(size, MAX_E_AC3_PROBE_BYTES);
       byte[] sample = new byte[length];
@@ -2918,6 +2936,8 @@ public class MatroskaExtractor implements Extractor {
     for (int i = 0; i < tracks.size(); i++) {
       Track track = tracks.valueAt(i);
       if (track.waitingForDtsAnalysis
+          || (track.trueHdSamplesToAnalyze > 0
+              && track.contentCompressionAlgorithm != CONTENT_COMPRESSION_ZLIB)
           || (track.waitingForEac3Analysis
               && track.contentCompressionAlgorithm != CONTENT_COMPRESSION_ZLIB)) {
         return true;
@@ -3007,7 +3027,8 @@ public class MatroskaExtractor implements Extractor {
     }
     int trackNumber = (int) readEbmlVintValue(dataStart, trackNumberLength);
     Track track = tracks.get(trackNumber);
-    if (track == null || (!track.waitingForDtsAnalysis && !track.waitingForEac3Analysis)) {
+    if (track == null || (!track.waitingForDtsAnalysis && !track.waitingForEac3Analysis
+        && track.trueHdSamplesToAnalyze == 0)) {
       return;
     }
     int pos = dataStart + trackNumberLength;
@@ -3055,6 +3076,16 @@ public class MatroskaExtractor implements Extractor {
       default:
         break; // No lacing.
     }
+    if (track.trueHdSamplesToAnalyze > 0) {
+      if (track.contentCompressionAlgorithm != CONTENT_COMPRESSION_ZLIB) {
+        int frameLength = min(dataEnd - pos, MAX_E_AC3_PROBE_BYTES);
+        if (frameLength >= 28 && ensureScanBytes(input, pos + frameLength)) {
+          track.trueHdSamplesToAnalyze--;
+          refineTrueHdTrack(track, earlyAudioScanBuffer, pos, pos + frameLength);
+        }
+      }
+      return;
+    }
     if (track.waitingForEac3Analysis) {
       if (track.contentCompressionAlgorithm != CONTENT_COMPRESSION_ZLIB) {
         int frameLength = min(dataEnd - pos, MAX_E_AC3_PROBE_BYTES);
@@ -3075,6 +3106,17 @@ public class MatroskaExtractor implements Extractor {
       track.format = track.format.buildUpon().setSampleMimeType(mimeType).build();
     }
     track.waitingForDtsAnalysis = false;
+  }
+
+  private static boolean refineTrueHdTrack(Track track, byte[] data, int offset, int limit) {
+    int presentation = TrueHdAtmos.probe(data, offset, limit);
+    if (presentation < 0) {
+      return false; // Minor sync frames do not prove the absence of Atmos.
+    }
+    track.trueHdSamplesToAnalyze = 0;
+    Format format = checkNotNull(track.format);
+    track.format = TrueHdAtmos.refineFormat(format, data, offset, limit);
+    return track.format != format;
   }
 
   private static boolean refineEac3Track(Track track, byte[] data, int offset, int limit) {
@@ -3230,6 +3272,8 @@ public class MatroskaExtractor implements Extractor {
     public @MonotonicNonNull TrueHdSampleRechunker trueHdSampleRechunker;
     public boolean waitingForDtsAnalysis = false;
     public boolean waitingForEac3Analysis = false;
+    // Bounded late fallback for streams whose first samples contain only minor sync frames.
+    public int trueHdSamplesToAnalyze = 0;
 
     // Text elements.
     public boolean flagForced;
@@ -3347,6 +3391,7 @@ public class MatroskaExtractor implements Extractor {
         case CODEC_ID_TRUEHD:
           mimeType = MimeTypes.AUDIO_TRUEHD;
           trueHdSampleRechunker = new TrueHdSampleRechunker();
+          trueHdSamplesToAnalyze = !hasContentEncryption && sampleStrippedBytes == null ? 256 : 0;
           break;
         case CODEC_ID_DTS:
         case CODEC_ID_DTS_EXPRESS:

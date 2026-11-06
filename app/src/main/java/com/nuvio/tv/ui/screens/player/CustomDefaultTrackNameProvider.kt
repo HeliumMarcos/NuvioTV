@@ -5,6 +5,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.DefaultTrackNameProvider
+import com.nuvio.tv.core.player.dvmkv.TrueHdAtmos
 
 /**
  * Custom track name provider that shows codec info (TrueHD, DTS-HD, etc.)
@@ -18,6 +19,7 @@ class CustomDefaultTrackNameProvider(resources: Resources) : DefaultTrackNamePro
 
         if (format.sampleMimeType != null) {
             var sampleFormat = resolveCodecName(format.sampleMimeType, format.codecs)
+            if (TrueHdAtmos.isPresent(format)) sampleFormat = "TrueHD Atmos"
             if (sampleFormat == null) {
                 sampleFormat = format.sampleMimeType
             }

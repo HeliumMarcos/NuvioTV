@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import com.nuvio.tv.core.player.dvmkv.TrueHdAtmos
 
 data class PlayerMediaInfo(
     val videoCodec: String? = null,
@@ -80,7 +81,8 @@ internal fun exoAudioProfiles(audio: Format?): List<String> {
     val label = audio.label.orEmpty().lowercase()
     val combined = "$codecs $label"
     return buildList {
-        if (combined.contains("atmos")) add("Atmos")
+        if (mime == MimeTypes.AUDIO_E_AC3_JOC || TrueHdAtmos.isPresent(audio)
+            || combined.contains("atmos")) add("Atmos")
         if (combined.contains("dts:x") || combined.contains("dtsx")
             || mime == MimeTypes.AUDIO_DTS_X) add("DTS:X")
         val isDtsHd = combined.contains("dts-hd") || combined.contains("dtshd")

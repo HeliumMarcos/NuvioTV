@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.audio.AudioSink
+import com.nuvio.tv.core.player.dvmkv.TrueHdAtmos
 import java.util.Locale
 
 /** AudioTrack is the app-to-Android boundary; firmware can still convert audio after it. */
@@ -12,11 +13,12 @@ import java.util.Locale
 internal object DebugAudioFormat {
     fun describeInput(format: Format?): String? = format?.let {
         describe(codecName(it.sampleMimeType), it.channelCount, it.sampleRate,
-            hasLfe = null) + if (it.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC) " · Atmos" else ""
+            hasLfe = null) + if (it.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC || TrueHdAtmos.isPresent(it)) " · Atmos" else ""
     }
 
     fun describeOutput(config: AudioSink.AudioTrackConfig, source: Format? = null): String {
         val isJoc = config.encoding == C.ENCODING_E_AC3_JOC
+        val isTrueHdAtmos = config.encoding == C.ENCODING_DOLBY_TRUEHD && TrueHdAtmos.isPresent(source)
         // Media3 can configure JOC with the route's maximum channel count. The
         // AudioTrack mask in this case does not describe the compressed bed.
         val channels = if (isJoc) {
@@ -26,7 +28,7 @@ internal object DebugAudioFormat {
         }
         val hasLfe = if (isJoc) null else config.channelConfig and AudioFormat.CHANNEL_OUT_LOW_FREQUENCY != 0
         return describe(encodingName(config.encoding), channels, config.sampleRate, hasLfe) +
-            if (isJoc) " · Atmos" else ""
+            if (isJoc || isTrueHdAtmos) " · Atmos" else ""
     }
 
     internal fun describe(codec: String, channels: Int, sampleRate: Int, hasLfe: Boolean? = null): String {

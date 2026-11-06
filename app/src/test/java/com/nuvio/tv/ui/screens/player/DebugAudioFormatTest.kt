@@ -4,12 +4,30 @@ import android.media.AudioFormat
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.Metadata
 import androidx.media3.exoplayer.audio.AudioSink
+import com.nuvio.tv.core.player.dvmkv.TrueHdAtmos
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DebugAudioFormatTest {
+    @Test
+    fun `confirmed TrueHD Atmos appears on input and TrueHD passthrough only`() {
+        val source = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_TRUEHD)
+            .setMetadata(Metadata(TrueHdAtmos.INSTANCE))
+            .setChannelCount(8).setSampleRate(48000).build()
+        assertEquals("TrueHD · 7.1 (8 canais) · 48 kHz · Atmos", DebugAudioFormat.describeInput(source))
+        val passthrough = AudioSink.AudioTrackConfig(C.ENCODING_DOLBY_TRUEHD, 48000,
+            AudioFormat.CHANNEL_OUT_7POINT1_SURROUND, false, true, 32768)
+        assertEquals("TrueHD · 7.1 (8 canais) · 48 kHz · Atmos",
+            DebugAudioFormat.describeOutput(passthrough, source))
+        val converted = AudioSink.AudioTrackConfig(C.ENCODING_E_AC3, 48000,
+            AudioFormat.CHANNEL_OUT_7POINT1_SURROUND, false, true, 32768)
+        assertEquals("DDP (E-AC-3) · 7.1 (8 canais) · 48 kHz",
+            DebugAudioFormat.describeOutput(converted, source))
+    }
+
     @Test
     fun `TrueHD source does not get mistaken for the DDP AudioTrack`() {
         val source = Format.Builder().setSampleMimeType(MimeTypes.AUDIO_TRUEHD)
