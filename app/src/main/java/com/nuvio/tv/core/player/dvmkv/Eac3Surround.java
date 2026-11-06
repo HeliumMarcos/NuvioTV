@@ -1,13 +1,41 @@
 package com.nuvio.tv.core.player.dvmkv;
 
+import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.ParsableBitArray;
 import androidx.media3.extractor.Ac3Util;
 import java.util.Arrays;
 
-/** Recognizes a 7.1 extension in a Matroska E-AC-3 access unit. */
+/** Refines Matroska E-AC-3 formats from JOC headers and discrete 7.1 extensions. */
 final class Eac3Surround {
   private Eac3Surround() {}
+
+  static Format refineFormat(Format format, byte[] data, int offset, int limit) {
+    if (offset < 0 || limit > data.length || limit - offset < 6
+        || !hasSyncword(data, offset)) {
+      return format;
+    }
+    int frameSize = Ac3Util.parseAc3SyncframeSize(
+        Arrays.copyOfRange(data, offset, offset + 6));
+    if (frameSize < 6 || frameSize > limit - offset) {
+      return format;
+    }
+    try {
+      Ac3Util.SyncFrameInfo frame = Ac3Util.parseAc3SyncframeInfo(
+          new ParsableBitArray(Arrays.copyOfRange(data, offset, offset + frameSize)));
+      if (MimeTypes.AUDIO_E_AC3_JOC.equals(frame.mimeType)
+          && frame.streamType != Ac3Util.SyncFrameInfo.STREAM_TYPE_TYPE1) {
+        return format.buildUpon()
+            .setSampleMimeType(MimeTypes.AUDIO_E_AC3_JOC)
+            .setChannelCount(frame.channelCount)
+            .build();
+      }
+    } catch (IllegalStateException | IllegalArgumentException | IndexOutOfBoundsException e) {
+      return format;
+    }
+    return has71Extension(data, offset, limit)
+        ? format.buildUpon().setChannelCount(8).build() : format;
+  }
 
   static boolean has71Extension(byte[] data, int offset, int limit) {
     if (limit - offset < 6 || !hasSyncword(data, offset)) {

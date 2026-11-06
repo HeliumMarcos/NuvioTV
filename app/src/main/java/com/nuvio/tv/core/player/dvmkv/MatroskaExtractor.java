@@ -3078,11 +3078,13 @@ public class MatroskaExtractor implements Extractor {
   }
 
   private static boolean refineEac3Track(Track track, byte[] data, int offset, int limit) {
-    if (!Eac3Surround.has71Extension(data, offset, limit)) {
+    Format format = checkNotNull(track.format);
+    Format refined = Eac3Surround.refineFormat(format, data, offset, limit);
+    if (refined == format) {
       return false;
     }
-    track.channelCount = 8;
-    track.format = checkNotNull(track.format).buildUpon().setChannelCount(8).build();
+    track.channelCount = refined.channelCount;
+    track.format = refined;
     return true;
   }
 
@@ -3340,8 +3342,7 @@ public class MatroskaExtractor implements Extractor {
           break;
         case CODEC_ID_E_AC3:
           mimeType = MimeTypes.AUDIO_E_AC3;
-          waitingForEac3Analysis = channelCount == 6
-              && !hasContentEncryption && sampleStrippedBytes == null;
+          waitingForEac3Analysis = !hasContentEncryption && sampleStrippedBytes == null;
           break;
         case CODEC_ID_TRUEHD:
           mimeType = MimeTypes.AUDIO_TRUEHD;
