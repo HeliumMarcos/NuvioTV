@@ -3017,7 +3017,7 @@ public class MatroskaExtractor implements Extractor {
     int flags = earlyAudioScanBuffer[pos + 2] & 0xFF;
     pos += 3; // Skip the 2-byte timecode and the flags byte.
     switch ((flags & 0x06) >> 1) {
-      case 1: { // Xiph lacing.
+      case LACING_XIPH: {
         if (pos >= dataEnd) {
           return;
         }
@@ -3030,7 +3030,7 @@ public class MatroskaExtractor implements Extractor {
         }
         break;
       }
-      case 2: { // EBML lacing.
+      case LACING_EBML: {
         if (pos >= dataEnd) {
           return;
         }
@@ -3045,7 +3045,7 @@ public class MatroskaExtractor implements Extractor {
         pos += firstSizeLength; // First frame's signed size; frame data follows.
         break;
       }
-      case 3: { // Fixed-size lacing.
+      case LACING_FIXED_SIZE: {
         if (pos >= dataEnd) {
           return;
         }
