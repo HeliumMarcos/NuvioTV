@@ -1,5 +1,11 @@
 # E-AC-3 7.1 encoder proof
 
+> Historical experiment log. The candidate plus the local mapping/surround corrections is now
+> integrated into the experimental Android build. The user confirmed all speakers in the TrueHD
+> 7.1 channel test. See the [consolidated report](../../docs/contributions/eac3-transcoding/RELATORIO-PT-BR.md)
+> for current scope, limitations and upstream contribution guidance. The earlier observations
+> below are retained to explain how the channel-loss defect was isolated.
+
 Isolated experiment; not used by the Android app yet. The working 5.1 branch stays unchanged.
 
 - Base: FFmpeg c352a9ab022b945307f1ad5d35575f695a13c2ca (2026-02-06).

@@ -1,5 +1,10 @@
 # Experimental AC-3 / E-AC-3 transcoding verification
 
+> Current consolidated status: see [the 5.1/7.1 and Atmos report](contributions/eac3-transcoding/RELATORIO-PT-BR.md).
+> The staged notes below are a historical implementation audit. Statements such as “not yet compiled”
+> describe the stage when they were written, not the final branch status. Device coverage and
+> outstanding stress tests are distinguished from implementation in the consolidated report.
+
 This branch is experimental. Do not merge into `dev` or distribute an APK as production-ready until the checks below pass.
 
 ## Build prerequisites
